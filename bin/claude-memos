@@ -1,0 +1,90 @@
+#!/bin/bash
+##
+## claude-memos — Claude Code launcher with Claude Memos Bootstrapping Protocol
+##
+## Starts a Claude Code session with the Claude Memos Bootstrapping Protocol
+## injected as a system prompt, enabling automatic episodic memory loading.
+##
+## Usage:
+##   claude-memos [--dry-run] [--help]
+##
+## Options:
+##   -n, --dry-run    Print the assembled system prompt; do not launch Claude
+##   -h, --help       Show this help message and exit
+##
+## Environment variables:
+##   BOOTSTRAP_FILE   Path to the bootstrap instructions file
+##                    Default: ~/.claude/instructions/claude-memos-bootstrap.instructions.md
+##   PREAMBLE_FILE    Optional path to a file prepended to the system prompt before
+##                    the bootstrap instructions (e.g., for permission-system notes
+##                    or other Claude Code environment setup). Default: none
+##   DRYRUN           Set to 1 to enable dry-run mode (equivalent to --dry-run)
+##
+
+set -euo pipefail
+
+readonly DEFAULT_BOOTSTRAP_FILE="${HOME}/.claude/instructions/claude-memos-bootstrap.instructions.md"
+
+BOOTSTRAP_FILE="${BOOTSTRAP_FILE:-${DEFAULT_BOOTSTRAP_FILE}}"
+PREAMBLE_FILE="${PREAMBLE_FILE:-}"
+DRY_RUN="${DRYRUN:-0}"
+
+usage() {
+    grep '^##' "$0" | sed 's/^## \?//'
+    exit 0
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -n|--dry-run)
+            DRY_RUN=1
+            shift
+            ;;
+        -h|--help)
+            usage
+            ;;
+        *)
+            echo "claude-memos: unknown option: $1" >&2
+            echo "Run 'cpeer --help' for usage." >&2
+            exit 1
+            ;;
+    esac
+done
+
+if [[ ! -f "${BOOTSTRAP_FILE}" ]]; then
+    echo "claude-memos: bootstrap file not found: ${BOOTSTRAP_FILE}" >&2
+    echo "  Set BOOTSTRAP_FILE to the path of your claude-memos-bootstrap.instructions.md" >&2
+    echo "  or install it at the default location: ${DEFAULT_BOOTSTRAP_FILE}" >&2
+    exit 1
+fi
+
+## Assemble the system prompt from optional preamble + bootstrap instructions
+system_prompt=""
+
+if [[ -n "${PREAMBLE_FILE}" ]]; then
+    if [[ ! -f "${PREAMBLE_FILE}" ]]; then
+        echo "claude-memos: preamble file not found: ${PREAMBLE_FILE}" >&2
+        exit 1
+    fi
+    system_prompt="$(cat "${PREAMBLE_FILE}")
+
+---
+
+"
+fi
+
+system_prompt="${system_prompt}$(cat "${BOOTSTRAP_FILE}")
+
+When complete, signal: [BOOTSTRAP COMPLETE]
+
+Then accept user input normally."
+
+if [[ "${DRY_RUN}" -ne 0 ]]; then
+    echo "claude-memos: assembled system prompt (dry run):"
+    echo "========================================"
+    printf '%s\n' "${system_prompt}"
+    echo "========================================"
+    exit 0
+fi
+
+exec claude --system-prompt "${system_prompt}" "Hello Claude"

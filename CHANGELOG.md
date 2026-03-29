@@ -5,6 +5,37 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.8.0] — 2026-03-28
+
+### Added
+
+- `claude-memos-bootstrap.instructions.md` — the Claude Code runtime implementation of
+  the protocol, symlinked from `~/.claude/instructions/`. Tracked here so the spec and
+  its working implementation travel together. The symlink target is an absolute path
+  specific to the original author's machine; adopters should re-create the symlink or
+  copy the file to their own `~/.claude/instructions/`.
+- `bin/claude-memos` — standalone launcher script that assembles the bootstrap system
+  prompt and starts a Claude Code session. Configurable via `BOOTSTRAP_FILE` and
+  `PREAMBLE_FILE` environment variables; supports `--dry-run` for prompt inspection.
+  Adapts the `cpeer` shell function from the original author's dotfiles into a portable,
+  installable form.
+- Sync table in both the protocol spec and the instructions file documenting which
+  elements must be kept in sync between the two (trusted keys, session log format,
+  validation thresholds, execution steps, memo frontmatter fields, version number).
+- Version note clarifying that `protocol.md` and `AGENTS.md` version fields are tracked
+  independently and a mismatch between them is not a validation anomaly.
+
+### Changed
+
+- Status section updated to reflect that the Claude Code + local git/gh CLI
+  implementation path is operational as of this release. The "known not to work" note
+  is now scoped correctly to the claude.ai web interface; the MCP wrapper for that
+  path remains planned but not yet implemented.
+- Sync reference added to `protocol.md` pointing to the instructions file as its
+  implementation counterpart, and vice versa.
+
+---
+
 ## [0.7.0](https://github.com/peter216/claude-memos-bootstrapping-protocol/releases/tag/0.7.0) - 2026-03-20
 
 <small>[Compare with first commit](https://github.com/peter216/claude-memos-bootstrapping-protocol/compare/972cfd2d147261c27a4a51fd89a16aca7b210d31...0.7.0)</small>
