@@ -1,7 +1,7 @@
 #!/bin/bash
 ##
 ## claude-memos — Claude Code launcher with Claude Memos Bootstrapping Protocol
-## Version: 1.0
+## Version: 1.0.1
 ##
 ## Starts a Claude Code session with the Claude Memos Bootstrapping Protocol
 ## injected as a system prompt, enabling automatic episodic memory loading.

@@ -1,0 +1,30 @@
+ancestor: null
+releases:
+  1.0.0:
+    changes:
+      major_changes:
+      - Co-Authored-By - Claude Sonnet 4.6 <noreply@anthropic.com>
+      - Mid-Session Memo Loading - At any point during a session, Peter may request
+        additional memos by id, tag, alias, or name.
+      - bin/claude-memos - add --recent, --tags, --alias, --all, --memos, --list flags;
+        inject Memo Loading Directive into system prompt; add MEMO_REPO_PATH and TAXONOMY_FILE
+        env vars; fix --help reference from cpeer to claude-memos
+      - bootstrap instructions (claude-memos-bootstrap.instructions.md via symlink)
+        - bump to v1.0.0; rewrite Step 3 for index-based loading with taxonomy resolution
+        and directive-driven memo selection; update session log format to show loaded/total
+        counts; update session close instructions for sticky/index model
+      - claude-memos-bootstrapping-protocol.md - bump to v1.0.0; update Repo Structure
+        to require taxonomy.yml and memos/ directory; update Memo Structure to document
+        that sticky lives in AGENTS.md index only (not memo frontmatter); add sub-file
+        convention; update Memo Lifecycle with index update step
+      release_summary: 'This release introduces a major update to the claude-memos
+        tool, enhancing its functionality and improving the bootstrapping protocol
+        for memo management. Key features include new command-line flags for better
+        memo handling, a revised repository structure, and an updated memo lifecycle
+        process. These changes aim to streamline the user experience and provide more
+        efficient memo organization and retrieval.
+
+        '
+    fragments:
+    - taxonomy-driven-menu-loading.yaml
+    release_date: '2026-04-01'
