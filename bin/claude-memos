@@ -1,33 +1,48 @@
 #!/bin/bash
 ##
 ## claude-memos — Claude Code launcher with Claude Memos Bootstrapping Protocol
+## Version: 1.0
 ##
 ## Starts a Claude Code session with the Claude Memos Bootstrapping Protocol
 ## injected as a system prompt, enabling automatic episodic memory loading.
 ##
 ## Usage:
-##   claude-memos [--dry-run] [--help]
+##   claude-memos [OPTIONS]
 ##
 ## Options:
-##   -n, --dry-run    Print the assembled system prompt; do not launch Claude
-##   -h, --help       Show this help message and exit
+##   -n, --dry-run        Print the assembled system prompt; do not launch Claude
+##   -h, --help           Show this help message and exit
+##   --recent <N>         Load sticky memos + N most recent non-sticky memos
+##   --tags <t1,t2,...>   Load sticky memos + non-sticky memos matching any listed tag
+##   --alias <name>       Load sticky memos + non-sticky memos matching alias tag expansion
+##   --all                Load sticky memos + all non-sticky memos
+##   --memos <ids>        Load sticky memos + explicitly listed memo ids (e.g. 007,008,009)
+##   --list               Print the taxonomy cheatsheet and exit (no Claude invocation)
+##
+## With no memo flag, only sticky memos are loaded.
 ##
 ## Environment variables:
-##   BOOTSTRAP_FILE   Path to the bootstrap instructions file
-##                    Default: ~/.claude/instructions/claude-memos-bootstrap.instructions.md
-##   PREAMBLE_FILE    Optional path to a file prepended to the system prompt before
-##                    the bootstrap instructions (e.g., for permission-system notes
-##                    or other Claude Code environment setup). Default: none
-##   DRYRUN           Set to 1 to enable dry-run mode (equivalent to --dry-run)
+##   BOOTSTRAP_FILE       Path to the bootstrap instructions file
+##                        Default: ~/.claude/instructions/claude-memos-bootstrap.instructions.md
+##   PREAMBLE_FILE        Optional path to a file prepended to the system prompt before
+##                        the bootstrap instructions (e.g., for permission-system notes
+##                        or other Claude Code environment setup). Default: none
+##   MEMO_REPO_PATH       Path to the local clone of the memo repo (used by --list)
+##                        Default: /tmp/claude-memos-session
+##   DRYRUN               Set to 1 to enable dry-run mode (equivalent to --dry-run)
 ##
 
 set -euo pipefail
 
 readonly DEFAULT_BOOTSTRAP_FILE="${HOME}/.claude/instructions/claude-memos-bootstrap.instructions.md"
+readonly DEFAULT_MEMO_REPO_PATH="/tmp/claude-memos-session"
 
 BOOTSTRAP_FILE="${BOOTSTRAP_FILE:-${DEFAULT_BOOTSTRAP_FILE}}"
 PREAMBLE_FILE="${PREAMBLE_FILE:-}"
+MEMO_REPO_PATH="${MEMO_REPO_PATH:-${DEFAULT_MEMO_REPO_PATH}}"
 DRY_RUN="${DRYRUN:-0}"
+MEMO_DIRECTIVE=""
+LIST_MODE=0
 
 usage() {
     grep '^##' "$0" | sed 's/^## \?//'
@@ -43,13 +58,65 @@ while [[ $# -gt 0 ]]; do
         -h|--help)
             usage
             ;;
+        --recent)
+            if [[ -z "${2:-}" || ! "${2}" =~ ^[0-9]+$ ]]; then
+                echo "claude-memos: --recent requires a positive integer argument" >&2
+                exit 1
+            fi
+            MEMO_DIRECTIVE="--recent $2"
+            shift 2
+            ;;
+        --tags)
+            if [[ -z "${2:-}" ]]; then
+                echo "claude-memos: --tags requires a comma-separated tag list" >&2
+                exit 1
+            fi
+            MEMO_DIRECTIVE="--tags $2"
+            shift 2
+            ;;
+        --alias)
+            if [[ -z "${2:-}" ]]; then
+                echo "claude-memos: --alias requires an alias name" >&2
+                exit 1
+            fi
+            MEMO_DIRECTIVE="--alias $2"
+            shift 2
+            ;;
+        --all)
+            MEMO_DIRECTIVE="--all"
+            shift
+            ;;
+        --memos)
+            if [[ -z "${2:-}" ]]; then
+                echo "claude-memos: --memos requires a comma-separated id list" >&2
+                exit 1
+            fi
+            MEMO_DIRECTIVE="--memos $2"
+            shift 2
+            ;;
+        --list)
+            LIST_MODE=1
+            shift
+            ;;
         *)
             echo "claude-memos: unknown option: $1" >&2
-            echo "Run 'cpeer --help' for usage." >&2
+            echo "Run 'claude-memos --help' for usage." >&2
             exit 1
             ;;
     esac
 done
+
+## --list: print taxonomy cheatsheet and exit
+if [[ "${LIST_MODE}" -ne 0 ]]; then
+    TAXONOMY_FILE="${MEMO_REPO_PATH}/taxonomy.yml"
+    if [[ ! -f "${TAXONOMY_FILE}" ]]; then
+        echo "claude-memos: taxonomy file not found: ${TAXONOMY_FILE}" >&2
+        echo "  Run a session first to clone the repo, or set MEMO_REPO_PATH." >&2
+        exit 1
+    fi
+    cat "${TAXONOMY_FILE}"
+    exit 0
+fi
 
 if [[ ! -f "${BOOTSTRAP_FILE}" ]]; then
     echo "claude-memos: bootstrap file not found: ${BOOTSTRAP_FILE}" >&2
@@ -58,7 +125,7 @@ if [[ ! -f "${BOOTSTRAP_FILE}" ]]; then
     exit 1
 fi
 
-## Assemble the system prompt from optional preamble + bootstrap instructions
+## Assemble the system prompt from optional preamble + bootstrap instructions + memo directive
 system_prompt=""
 
 if [[ -n "${PREAMBLE_FILE}" ]]; then
@@ -73,7 +140,18 @@ if [[ -n "${PREAMBLE_FILE}" ]]; then
 "
 fi
 
-system_prompt="${system_prompt}$(cat "${BOOTSTRAP_FILE}")
+system_prompt="${system_prompt}$(cat "${BOOTSTRAP_FILE}")"
+
+## Append memo loading directive if a flag was specified
+if [[ -n "${MEMO_DIRECTIVE}" ]]; then
+    system_prompt="${system_prompt}
+
+## Memo Loading Directive
+
+When selecting memos in Step 3, apply this flag: ${MEMO_DIRECTIVE}"
+fi
+
+system_prompt="${system_prompt}
 
 When complete, signal: [BOOTSTRAP COMPLETE]
 
