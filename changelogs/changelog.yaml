@@ -28,3 +28,15 @@ releases:
     fragments:
     - taxonomy-driven-menu-loading.yaml
     release_date: '2026-04-01'
+  1.1.0:
+    changes:
+      minor_changes:
+      - Add `Session Resume` section to README
+      release_summary: 'This release introduces a minor update to the claude-memos
+        tool, allowing mid-session memo loading. It also introduces the antsibull-changelog
+        tool method for managing changelogs.
+
+        '
+    fragments:
+    - v1.1.0.yaml
+    release_date: '2026-04-04'
