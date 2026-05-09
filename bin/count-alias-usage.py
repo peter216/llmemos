@@ -8,23 +8,14 @@ from collections import Counter
 
 # Known aliases to scan for in opening messages / memo topics
 ALIASES = [
-    "batman",
-    "memos",
-    "memory",
-    "protocol",
-    "bruce-wayne",
-    "work",
-    "pitch",
-    "centaur",
-    "quality",
-    "deep",
-    "philosophy",
-    "retirement",
-    "money",
-    "nest-egg",
-    "tools",
-    "plumbing",
-    "ops",
+    "dont_panic",
+    "hitchhiking",
+    "babel_fish",
+    "vogons",
+    "planetary_demolition",
+    "dolphins",
+    "heart_of_gold",
+    "mice",
 ]
 
 
