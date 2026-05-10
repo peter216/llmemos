@@ -39,6 +39,7 @@ debug = os.environ.get("DEBUG") == "1"
 
 try:
     from llmemos_logger import get_logger  # optional: colored output + NOTICE/SUCCESS levels
+
     logger = get_logger(__name__, level=logging.DEBUG if debug else logging.INFO)
 except ImportError:
     logging.basicConfig(level=logging.DEBUG if debug else logging.INFO)
@@ -119,9 +120,7 @@ def extract_session_directive(filepath: str):
     return None
 
 
-def count_from_log(
-    log_path: Path, tags: dict, aliases: dict
-) -> tuple[Counter, Counter]:
+def count_from_log(log_path: Path, tags: dict, aliases: dict) -> tuple[Counter, Counter]:
     """Count directives from the llmemos directive-usage.log file.
 
     Log format (tab-separated):
@@ -147,7 +146,9 @@ def count_from_log(
                 logger.debug(f"{log_path}:{lineno}: unexpected format: {line!r}")
                 continue
             _timestamp, source, directive_type, value, _uuid = parts
-            logger.debug(f"Log entry: source={source} type={directive_type} value={value} uuid={_uuid}")
+            logger.debug(
+                f"Log entry: source={source} type={directive_type} value={value} uuid={_uuid}"
+            )
             if directive_type == "alias":
                 if value in aliases:
                     alias_counts[value] += 1
@@ -160,17 +161,15 @@ def count_from_log(
                     else:
                         logger.debug(f"Unknown tag '{tag}' at line {lineno}")
 
-    logger.debug(f"Log: {sum(alias_counts.values())} alias hits, {sum(tag_counts.values())} tag hits")
+    logger.debug(
+        f"Log: {sum(alias_counts.values())} alias hits, {sum(tag_counts.values())} tag hits"
+    )
     return alias_counts, tag_counts
 
 
-def count_from_jsonl(
-    project_path: str, tags: dict, aliases: dict
-) -> tuple[Counter, Counter]:
+def count_from_jsonl(project_path: str, tags: dict, aliases: dict) -> tuple[Counter, Counter]:
     """Count directives typed as the opening line of user messages in .jsonl files."""
-    session_files = glob(
-        os.path.join(project_path, "**", "*.jsonl"), recursive=True
-    )
+    session_files = glob(os.path.join(project_path, "**", "*.jsonl"), recursive=True)
     logger.debug(f"Found {len(session_files)} session files under {project_path}")
 
     alias_counts: Counter = Counter()
@@ -193,7 +192,9 @@ def count_from_jsonl(
                 else:
                     logger.debug(f"Unknown tag '{tag}' in {filepath}")
 
-    logger.debug(f"JSONL: {sum(alias_counts.values())} alias hits, {sum(tag_counts.values())} tag hits")
+    logger.debug(
+        f"JSONL: {sum(alias_counts.values())} alias hits, {sum(tag_counts.values())} tag hits"
+    )
     return alias_counts, tag_counts
 
 
@@ -207,10 +208,12 @@ if __name__ == "__main__":
         "CLAUDE_PROJECT_PATH",
         str(Path.home() / ".claude" / "projects"),
     )
-    log_path = Path(os.environ.get(
-        "LLMEMOS_LOG",
-        str(Path.home() / ".llmemos" / "directive-usage.log"),
-    ))
+    log_path = Path(
+        os.environ.get(
+            "LLMEMOS_LOG",
+            str(Path.home() / ".llmemos" / "directive-usage.log"),
+        )
+    )
 
     taxonomy = load_taxonomy(os.path.join(memo_repo_path, "taxonomy.yml"))
     tags = taxonomy.get("tags", {})
