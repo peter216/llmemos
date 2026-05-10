@@ -1,13 +1,14 @@
 #!/bin/bash
 ##
-## claude-memos — Claude Code launcher with Claude Memos Bootstrapping Protocol
-## Version: 1.0.1
+## llmemos — Claude Code launcher with llmemos bootstrapping protocol
+## Version: 1.1.0
 ##
-## Starts a Claude Code session with the Claude Memos Bootstrapping Protocol
+## Starts a Claude Code session with the llmemos bootstrapping protocol
 ## injected as a system prompt, enabling automatic episodic memory loading.
+## Directive invocations are logged to ~/.llmemos/directive-usage.log.
 ##
 ## Usage:
-##   claude-memos [OPTIONS]
+##   llmemos [OPTIONS]
 ##
 ## Options:
 ##   -n, --dry-run        Print the assembled system prompt; do not launch Claude
@@ -19,7 +20,7 @@
 ##   --memos <ids>        Load sticky memos + explicitly listed memo ids (e.g. 007,008,009)
 ##   --list               Print the taxonomy cheatsheet and exit (no Claude invocation)
 ##
-## With no memo flag, only sticky memos are loaded.
+## With no memo flag, only sticky memos are loaded (plus any platform_defaults in taxonomy.yml).
 ##
 ## Environment variables:
 ##   BOOTSTRAP_FILE       Path to the bootstrap instructions file
@@ -29,6 +30,8 @@
 ##                        or other Claude Code environment setup). Default: none
 ##   MEMO_REPO_PATH       Path to the local clone of the memo repo (used by --list)
 ##                        Default: /tmp/claude-memos-session
+##   LLMEMOS_LOG          Path to the directive usage log file
+##                        Default: ~/.llmemos/directive-usage.log
 ##   DRYRUN               Set to 1 to enable dry-run mode (equivalent to --dry-run)
 ##
 
@@ -36,10 +39,12 @@ set -euo pipefail
 
 readonly DEFAULT_BOOTSTRAP_FILE="${HOME}/.claude/bootstrap/llmemos-bootstrap.instructions.md"
 readonly DEFAULT_MEMO_REPO_PATH="/tmp/claude-memos-session"
+readonly DEFAULT_LLMEMOS_LOG="${HOME}/.llmemos/directive-usage.log"
 
 BOOTSTRAP_FILE="${BOOTSTRAP_FILE:-${DEFAULT_BOOTSTRAP_FILE}}"
 PREAMBLE_FILE="${PREAMBLE_FILE:-}"
 MEMO_REPO_PATH="${MEMO_REPO_PATH:-${DEFAULT_MEMO_REPO_PATH}}"
+LLMEMOS_LOG="${LLMEMOS_LOG:-${DEFAULT_LLMEMOS_LOG}}"
 DRY_RUN="${DRYRUN:-0}"
 MEMO_DIRECTIVE=""
 LIST_MODE=0
@@ -158,11 +163,28 @@ When complete, signal: [BOOTSTRAP COMPLETE]
 Then accept user input normally."
 
 if [[ "${DRY_RUN}" -ne 0 ]]; then
-    echo "claude-memos: assembled system prompt (dry run):"
+    echo "llmemos: assembled system prompt (dry run):"
     echo "========================================"
     printf '%s\n' "${system_prompt}"
     echo "========================================"
     exit 0
+fi
+
+## Log directive invocation before launching
+## Format: <timestamp>\t<source>\t<type>\t<value>\t<uuid>
+## Other launchers may append to the same log using the same format.
+if [[ -n "${MEMO_DIRECTIVE}" ]]; then
+    mkdir -p "$(dirname "${LLMEMOS_LOG}")"
+    launch_id="$(uuidgen 2>/dev/null | tr '[:upper:]' '[:lower:]' || printf '%s-%s' "$(date +%s)" "$$")"
+    directive_type="${MEMO_DIRECTIVE%% *}"   # e.g. "--alias"
+    directive_value="${MEMO_DIRECTIVE#* }"   # e.g. "quality"
+    printf '%s\t%s\t%s\t%s\t%s\n' \
+        "$(date -Iseconds)" \
+        "llmemos" \
+        "${directive_type#--}" \
+        "${directive_value}" \
+        "${launch_id}" \
+        >> "${LLMEMOS_LOG}"
 fi
 
 exec claude --system-prompt "${system_prompt}" "Hello Claude"
