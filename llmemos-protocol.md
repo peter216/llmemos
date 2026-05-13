@@ -1,8 +1,9 @@
 ---
-protocol: claude-memos-bootstrapping
-version: "1.2.0"
+protocol: llmemos-bootstrapping
+version: "1.3.0"
 canonical-repo: github.com/<your-username>/<your-corpus-repo>
 canonical-branch: main
+canonical-google-drive-folder: llmemos
 trusted-signing-key-fingerprints:
   - "AAAA0000111122223333444455556666BBBB7777"  # your-email@example.com, primary key
   - "BBBB1111222233334444555566667777CCCC8888"  # your-email@example.com, secondary key
@@ -10,34 +11,32 @@ trusted-signing-key-fingerprints:
   # Run: gpg --list-secret-keys --keyid-format LONG
 ---
 
-# Claude Memos Bootstrapping Protocol
+# llmemos Bootstrapping Protocol
 
-Version: 1.2.0
+Version: 1.3.0
 
-This file documents the bootstrapping protocol for the Claude Memos project. It should be kept
-in sync with the implementation files listed in the sync table below.
+This file documents the bootstrapping protocol for the llmemos project. It should be kept in sync with the implementation files listed in the sync table below.
 
   ┌─────────────────────────────────────┬───────────────────────────────────────────────────────────┐
   │               Element               │                    All implementation files                │
   ├─────────────────────────────────────┼───────────────────────────────────────────────────────────┤
-  │ Trusted key fingerprints            │  Must match                                               │
-  ├─────────────────────────────────────┼───────────────────────────────────────────────────────────┤
-  │ Session log format                  │  Must match                                               │
-  ├─────────────────────────────────────┼───────────────────────────────────────────────────────────┤
-  │ Validation scoring thresholds (0-3) │  Must match                                               │
-  ├─────────────────────────────────────┼───────────────────────────────────────────────────────────┤
-  │ Step-by-step execution steps        │  Must be consistent (paths differ by implementation)      │
-  ├─────────────────────────────────────┼───────────────────────────────────────────────────────────┤
-  │ Memo frontmatter required fields    │  Must match                                               │
-  ├─────────────────────────────────────┼───────────────────────────────────────────────────────────┤
-  │ Protocol version number             │  Should match                                             │
+  │ Protocol Version                    │ llmemos-bootstrap.instructions.md, AGENTS.md, taxonomy.yml │
+  │ Trusted Signing Key Fingerprints    │ llmemos-bootstrap.instructions.md, sync_gdrive.py          │
+  │ Canonical Repo / Branch / Folder    │ llmemos-bootstrap.instructions.md, sync_gdrive.py          │
   └─────────────────────────────────────┴───────────────────────────────────────────────────────────┘
+
+## Purpose
+
+The llmemos project maintains an episodic memory corpus to enable seamless, shared context across multiple AI agents and platforms. Because this context is retrieved dynamically at the start of a session, a rigorous "bootstrapping" protocol is required to ensure the data is authentic, complete, and untampered with.
+
+## Scope
+
+This protocol applies to any Agent instance (CLI, Web, or Mobile) initiating a session with access to the llmemos corpus.
 
 Implementation files:
 
-- `llmemos-bootstrap.instructions.md` — Claude Code path (git CLI via Bash tool)
-- Claude.ai Project instructions — MCP path (gh-mcp remote server); see
-  `docs/MCP-PROTOCOL-IMPLEMENTATION.md` Appendix A for the canonical draft
+- `llmemos-bootstrap.instructions.md` — Local Agent path (git CLI via Bash tool)
+- `llmemos.project` — MCP path (gh-mcp remote server); see `docs/MCP-PROTOCOL-IMPLEMENTATION.md` Appendix A for the canonical draft
 
 ## Changelog
 
@@ -47,17 +46,9 @@ For revision history prior to v1.0.0, see [CHANGELOG.pre-v1.0.0.md](./CHANGELOG.
 
 ## Status
 
-**Claude Code path:** Fully operational as of v1.0.0. Sessions started via `cpeer` /
-`bin/claude-memos` clone the repo, verify GPG signatures, and load memos via local git CLI.
-See the claude-memos repo CHANGELOG for history.
+**Claude Code path:** Fully operational as of v1.0.0. Sessions started via `claude-launcher` clone the repo, verify GPG signatures, and load memos via local git CLI. See the claude-memos repo CHANGELOG for history.
 
-**Claude.ai path:** Operational as of v1.2.0 via the gh-mcp remote MCP server
-(`https://your-mcp-server.example.com/mcp` — deploy your own; see `mcp-server/`). The server
-exposes three tools — `verify_repo_state`, `fetch_memos`, and `read_repo_file` — which together
-provide full protocol capability including signature verification, AGENTS.md parsing, and
-individual memo file retrieval. To use this path, the gh-mcp integration must be connected
-in Claude.ai Settings → Integrations, and the Claude.ai Project instructions (see
-`llmemos-claude-ai-project-instructions.md`
+**Claude.ai path:** Operational as of v1.2.0 via the gh-mcp remote MCP server (`https://your-mcp-server.example.com/mcp` — deploy your own; see `mcp-server/`). The server exposes three tools — `verify_repo_state`, `fetch_memos`, and `read_repo_file` — which together provide full protocol capability including signature verification, AGENTS.md parsing, and individual memo file retrieval. To use this path, the gh-mcp integration must be connected in Claude.ai Settings → Integrations, and the Claude.ai Project instructions (see `llmemos-claude-ai-project-instructions.md`
 Appendix A) must be present in the Project used for memo sessions.
 
 ---
