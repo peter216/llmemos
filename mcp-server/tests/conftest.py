@@ -18,10 +18,12 @@ TEST_SIGNING_KEY = os.environ.get("TEST_SIGNING_KEY", "")  # gitleaks:allow
 # Does not need to exist in any keyring; just must be a different fingerprint.
 OTHER_KEY = "AAAA0000111122223333444455556666BBBB7777"  # gitleaks:allow
 
+
 def _require_signing_key():
     """Call at the top of any fixture that needs TEST_SIGNING_KEY — skips if absent."""
     if not TEST_SIGNING_KEY:
         pytest.skip("TEST_SIGNING_KEY env var not set — skipping signed-commit tests")
+
 
 # ---------------------------------------------------------------------------
 # Test log hook — writes output to tests/logs/<testname>.<timestamp>.log
@@ -112,9 +114,7 @@ def signed_bare_repo(tmp_path):
 
     work = tmp_path / "signed_work"
     subprocess.run(["git", "clone", str(bare), str(work)], check=True, capture_output=True)
-    subprocess.run(
-        ["git", "-C", str(work), "config", "user.email", "test@example.com"], check=True
-    )
+    subprocess.run(["git", "-C", str(work), "config", "user.email", "test@example.com"], check=True)
     subprocess.run(["git", "-C", str(work), "config", "user.name", "Test User"], check=True)
 
     (work / "README.md").write_text("signed test repo\n")
@@ -164,15 +164,21 @@ def signed_bare_repo_with_agents(tmp_path):
 
     work = tmp_path / "signed_agents_work"
     subprocess.run(["git", "clone", str(bare), str(work)], check=True, capture_output=True)
-    subprocess.run(
-        ["git", "-C", str(work), "config", "user.email", "test@example.com"], check=True
-    )
+    subprocess.run(["git", "-C", str(work), "config", "user.email", "test@example.com"], check=True)
     subprocess.run(["git", "-C", str(work), "config", "user.name", "Test User"], check=True)
 
     (work / "AGENTS.md").write_text("# Test AGENTS.md\n\ncontent\n")
     subprocess.run(["git", "-C", str(work), "add", "."], check=True)
     subprocess.run(
-        ["git", "-C", str(work), "commit", f"--gpg-sign={TEST_SIGNING_KEY}", "-m", "signed with agents"],
+        [
+            "git",
+            "-C",
+            str(work),
+            "commit",
+            f"--gpg-sign={TEST_SIGNING_KEY}",
+            "-m",
+            "signed with agents",
+        ],
         check=True,
         capture_output=True,
     )
@@ -196,9 +202,7 @@ def signed_bare_repo_with_files(tmp_path):
 
     work = tmp_path / "signed_files_work"
     subprocess.run(["git", "clone", str(bare), str(work)], check=True, capture_output=True)
-    subprocess.run(
-        ["git", "-C", str(work), "config", "user.email", "test@example.com"], check=True
-    )
+    subprocess.run(["git", "-C", str(work), "config", "user.email", "test@example.com"], check=True)
     subprocess.run(["git", "-C", str(work), "config", "user.name", "Test User"], check=True)
 
     (work / "AGENTS.md").write_text("# Test AGENTS.md\n\ncontent\n")
