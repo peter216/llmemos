@@ -1,0 +1,19 @@
+[Unit]
+Description=gh-mcp — llmemos MCP server for GPG-verified repo access
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Run as a dedicated non-root user; create with: useradd -r -s /bin/false gh-mcp
+User=gh-mcp
+WorkingDirectory=/opt/gh-mcp
+# Environment file — copy deploy/env.example to this path and fill in values
+# chmod 600 /etc/gh-mcp/env && chown gh-mcp:gh-mcp /etc/gh-mcp/env
+EnvironmentFile=/etc/gh-mcp/env
+ExecStart=/opt/gh-mcp/.venv/bin/gh-mcp
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
