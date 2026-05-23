@@ -2,7 +2,7 @@
 
 **Branch:** `WIP` → target merge to `main` when all phases complete
 **Target release:** v1.3.0
-**Status:** In progress
+**Status:** Phases 0–3 complete. Phases 4–6 remaining.
 
 This document plots the path from the current WIP state to a release-ready public
 repository. Phases are sequential. Each task carries a checkbox; mark complete as work
@@ -20,6 +20,10 @@ any file that contains configuration, verify it uses placeholders before committ
 **The WIP branch.** All work lands on `WIP`. No squash on merge to main — preserve
 commit history for changelog accuracy. Tag `v1.3.0` immediately after merge.
 
+**Commits on WIP are unsigned** (GPG signing requires a TTY; Claude Code runs without
+one). Before merging to main, amend or re-sign the WIP commits, or accept them as-is
+and sign the merge commit itself.
+
 ---
 
 ## Phase 0 — Decisions (resolve before writing any code)
@@ -31,10 +35,11 @@ commit history for changelog accuracy. Tag `v1.3.0` immediately after merge.
   heavy for an initial release.
 
 - [x] **gh-mcp: merge into `mcp-server/` subdirectory.** Per memo-022 decision, the
-  monorepo approach. gh-mcp source lives at `~/git/claude-project/gh-mcp/`. Content
-  to copy: `src/`, `tests/`, `pyproject.toml`, `uv.lock`, `deploy/`, `docs/` (minus
-  any personal references). The private `peter216/gh-mcp` repo stays as the deployment
-  record.
+  monorepo approach. gh-mcp source lives at `~/git/claude-project/gh-mcp/`. The private
+  `peter216/gh-mcp` repo stays as the deployment record.
+  *Note: `docs/` from gh-mcp was discarded — too many personal server references
+  (`martiangoblin.xyz`, Oracle host details) too deeply embedded to be worth cleaning.
+  The MCP implementation lessons are captured in memo-010 instead.*
 
 - [x] **Corpus template: in this repo as `corpus-template/`.** Keep it simple — the
   HHGTTG-themed example corpus from memo-022 planning. Separate GitHub template repo
@@ -44,82 +49,95 @@ commit history for changelog accuracy. Tag `v1.3.0` immediately after merge.
   `providers/anthropic.claude-code/` and `providers/anthropic.claude-ai/`. The
   bootstrap instructions file moves here with placeholder content.
 
----
+- [x] **Env file convention: `.env.example` / `.envrc.example` (committed templates).**
+  `.gitignore` uses specific entries `.env` and `.envrc` (not the glob `.env*`) so that
+  example files are tracked. gopass path patterns are documented as comments in the
+  example file; no real secrets are committed anywhere.
 
-## Phase 1 — Protocol Spec Cleanup
-
-- [ ] **Merge `llmemos-protocol.md` + `llmemos-protocol.cand.md` → single file.**
-  - Keep `llmemos-protocol.md` as the canonical file (it already has generic fingerprints)
-  - Add Path C from `llmemos-protocol.cand.md` as a new section, marked "advanced /
-    platform-specific, not implemented in v1.x"
-  - Remove the Chain of Provenance section from `cand.md` → incorporate into protocol
-    as the security model for Path C
-  - Ensure all fingerprints remain as placeholders (no real keys)
-  - Delete `llmemos-protocol.cand.md` after merge
-
-- [ ] **Fix protocol spec: AGENTS.md frontmatter example.**
-  The `Repo Structure` section shows `protocol-version: "1.2.0"` — update to `"1.3.0"`.
-
-- [ ] **Update CHANGELOG.md with v1.3.0 entry.** Items to document:
-  - Gemini / Path C documented (advanced path)
-  - `platform_defaults` section in taxonomy.yml
-  - `providers/` directory structure
-  - `mcp-server/` (gh-mcp) merged in
-  - `corpus-template/` added
-  - Directive usage logging in `bin/llmemos`
-  - `llmemos_logger.py` added
+- [x] **Deploy target: generic Linux + Cloudflare Tunnel as Plan A.** No Oracle or
+  Cloudflare hard dependency. Service file uses `/opt/gh-mcp` and a dedicated `gh-mcp`
+  system user. Cloudflare Tunnel is recommended as Plan A (free, persistent, no
+  port-forwarding) with nginx as Plan B. Oracle Free Tier mentioned as a no-cost host
+  option in the README, not a requirement.
 
 ---
 
-## Phase 2 — Providers Directory
+## Phase 1 — Protocol Spec Cleanup ✅
 
-- [ ] **Create `providers/anthropic.claude-code/` directory.**
-  - Add `llmemos-bootstrap.instructions.md` — the Claude Code bootstrap file with
-    placeholder fingerprints and repo URL. Source from Peter's personal chezmoi copy
-    at `~/.claude/bootstrap/llmemos-bootstrap.instructions.md`; strip real fingerprints
-    and personal repo URL before committing.
-  - Verify the file references `--tags <your-default-tags>` or similar, not
-    Peter-specific defaults.
+- [x] **Merge `llmemos-protocol.md` + `llmemos-protocol.cand.md` → single file.**
+  - Path C added as "advanced / platform-specific, not implemented in v1.x"
+  - Chain of Provenance security model incorporated under Security section
+  - All fingerprints remain as placeholders
+  - `llmemos-protocol.cand.md` deleted
 
-- [ ] **Create `providers/anthropic.claude-ai/` directory.**
-  - Move `llmemos-claude-ai-project-instructions.md` here (or symlink).
-  - Update README reference.
+- [x] **Fix protocol spec: AGENTS.md frontmatter example.**
+  Updated `protocol-version: "1.2.0"` → `"1.3.0"`.
 
-- [ ] **Add `providers/README.md`.** Brief explanation of the `company.product` naming
-  convention and what goes in each provider directory.
+- [x] **Fix protocol spec: Session Resume Path A.**
+  Corrected stale script name `claude-memos` → `llmemos`.
+
+- [x] **Update CHANGELOG.md with v1.3.0 entry.**
+  *Note: `corpus-template/` entry is included in the changelog but the directory itself
+  lands in Phase 4. That's fine — the changelog documents the release as a whole.*
+
+- [x] **Update `.gitignore`:** `.env*` glob → specific `.env` and `.envrc` entries.
+
+- [x] **Add `IMPLEMENTATION.md`** (this file).
 
 ---
 
-## Phase 3 — MCP Server Merge
+## Phase 2 — Providers Directory ✅
 
-- [ ] **Create `mcp-server/` directory and copy gh-mcp source.**
-  Source: `~/git/claude-project/gh-mcp/`
+- [x] **Create `providers/anthropic.claude-code/llmemos-bootstrap.instructions.md`.**
+  Sourced from Peter's chezmoi copy; all real fingerprints, personal repo URL, and
+  personal name references stripped. Default loading directive set to `--sticky`
+  (not Peter's personal `--tags claude-code`) so new users get a safe, minimal default.
+  Tmp dir changed from `/tmp/claude-memos-session` → `/tmp/llmemos-session`.
 
-  Files to include:
-  - `src/` (full Python package)
-  - `tests/` (full test suite)
-  - `pyproject.toml`, `uv.lock`
-  - `deploy/` (systemd unit files, env template) — strip personal server addresses
-  - `docs/` — strip personal references, keep architecture docs
+- [x] **Create `providers/anthropic.claude-ai/llmemos-project-instructions.md`.**
+  Moved from root (git detected as 83% rename). "Peter" → "the user" throughout.
+  Protocol version bumped to 1.3.0. Default directive set to `--sticky`.
 
-  Files to exclude:
-  - `logs/`
-  - `__pycache__`
-  - Any `.env` files
-  - Deployment records with personal server info
+- [x] **Add `providers/README.md`.** Explains the `company.product` convention and
+  per-provider setup steps.
 
-- [ ] **Review `deploy/` and `docs/` for personal references before committing.**
-  Check for: `martiangoblin.xyz`, `oraclefree`, personal email addresses.
+- [x] **Update `README.md`** — layout diagram and install steps updated to reflect new
+  providers/ paths; provider instructions no longer say "coming soon".
 
-- [ ] **Add `mcp-server/README.md`.** Minimal: what it does, how to deploy (systemd
-  + Cloudflare tunnel pattern), how to register with Claude.ai. Can reference the
-  deploy/ files.
+---
 
-- [ ] **Run the test suite against the merged copy.** Make sure nothing broke in
-  the copy.
-  ```bash
-  cd mcp-server && uv run pytest tests/ -v
-  ```
+## Phase 3 — MCP Server Merge ✅
+
+- [x] **Create `mcp-server/` and copy gh-mcp source.**
+  Files included: `src/`, `tests/` (excluding logs/), `pyproject.toml`, `uv.lock`,
+  `deploy/`, `.gitignore`, `README.md`.
+  Files excluded: `docs/` (personal refs), `logs/`, `__pycache__`, `.egg-info`.
+
+- [x] **Review deploy/ and docs/ for personal references before committing.**
+  `deploy/env.example`: ALLOWED_REPOS, TRUSTED_KEYS, ALLOWED_HOSTS all genericized;
+  gopass usage pattern documented in comments.
+  `deploy/gh-mcp.service`: paths changed to `/opt/gh-mcp`; dedicated `gh-mcp` system user.
+  `docs/` discarded entirely (see Phase 0 note).
+
+- [x] **Add `mcp-server/README.md`.** Cloudflare Tunnel as Plan A, nginx as Plan B;
+  env var reference table; test instructions with GPG agent note.
+
+- [x] **Run the test suite against the merged copy.**
+  *Findings:*
+  - 34 non-signing tests pass cleanly.
+  - 14 signing tests require `TEST_SIGNING_KEY` env var + GPG agent unlocked (no TTY
+    prompt). They skip automatically when `TEST_SIGNING_KEY` is unset.
+  - `@pytest.mark.skipif` on fixtures is removed in pytest 9 — replaced with
+    `_require_signing_key()` helper called at the top of each signing fixture.
+  - The signing tests cannot run from within Claude Code (no TTY for pinentry).
+    They pass in a normal terminal with the GPG agent unlocked.
+
+- [x] **Side effect: fix `~/.gitleaks.toml` (chezmoi) for subdirectory `.venv/`.**
+  The pre-commit gitleaks hook scans the full working directory. `^\\.venv/` only
+  matched at the repo root; `mcp-server/.venv/` (created by `uv sync`) triggered false
+  positives from test key material in the `cryptography` and `jwt` packages.
+  Fixed pattern: `^(.*/)?\\.venv/`. Applied via chezmoi → will propagate to all
+  project dirs on next pre-commit run.
 
 ---
 
@@ -127,8 +145,8 @@ commit history for changelog accuracy. Tag `v1.3.0` immediately after merge.
 
 - [ ] **Create `corpus-template/` with the HHGTTG-themed example corpus.**
   Minimum required files:
-  - `AGENTS.md` — with example frontmatter, Zaphod/Arthur/Ford as example memos
-  - `taxonomy.yml` — with HHGTTG-themed tags and aliases:
+  - `AGENTS.md` — protocol frontmatter, example memo index with Zaphod/Arthur/Ford entries
+  - `taxonomy.yml` — HHGTTG-themed tags and aliases:
     `dont_panic`, `hitchhiking`, `vogons`, `babel_fish`, `heart_of_gold`, `mice`, etc.
   - `memos/` — 2-3 example memo files showing realistic frontmatter and content format
 
@@ -139,25 +157,23 @@ commit history for changelog accuracy. Tag `v1.3.0` immediately after merge.
 
 ## Phase 5 — README and Docs Cleanup
 
-- [ ] **Update `README.md` to remove all "coming soon" references.**
-  Specifically:
-  - `mcp-server/` — now real, update the description
-  - `corpus-template/` — now real, update the description
-  - `providers/anthropic.claude-code/llmemos-bootstrap.instructions.md` — now real,
-    update the install instructions
-  - "Full install script coming soon" — either add a script or rewrite as honest manual steps
+- [ ] **Update `README.md` layout diagram and "coming soon" references.**
+  Remaining items:
+  - `mcp-server/` comment still says "(coming soon)" — update to reflect it's real
+  - `corpus-template/` comment says "(coming soon)" — update after Phase 4 lands
+  - "Full install script coming soon" — rewrite as honest "manual steps for now" or add
+    a minimal install script
 
-- [ ] **Verify README layout matches actual repo structure.** The layout diagram should
-  match `git ls-files`.
+- [ ] **Verify README layout matches actual `git ls-files` output.**
 
-- [ ] **Add a `docs/` directory (optional but recommended).** Move `MCP-PROTOCOL-IMPLEMENTATION.md`
-  and similar planning documents here if worth keeping. Or discard.
+- [ ] **`docs/` directory** — decided not to carry over the gh-mcp implementation doc
+  (too personal). No action needed unless something else surfaces.
 
 ---
 
 ## Phase 6 — Final Checks and Release
 
-- [ ] **Scan for personal references.** Run:
+- [ ] **Scan for personal references.**
   ```bash
   grep -r "peter216\|martiangoblin\|peter\.rubenstein\|@gmail\.com\|63611E76\|757BECAF\|7E4BE13E\|0A7C57B8" . \
     --include="*.md" --include="*.py" --include="*.yml" --include="*.sh" \
@@ -174,6 +190,12 @@ commit history for changelog accuracy. Tag `v1.3.0` immediately after merge.
   ```bash
   ./bin/llmemos --dry-run --tags claude-code
   ```
+
+- [ ] **Sign or amend the WIP commits before merge.**
+  All WIP commits are currently unsigned (Claude Code has no TTY for GPG pinentry).
+  Options: `git rebase -S` to re-sign all commits, or accept unsigned WIP history and
+  sign the merge commit itself. The merge commit landing on `main` is what matters for
+  the protocol's own integrity demonstration.
 
 - [ ] **Merge `WIP` → `main`.** No squash.
   ```bash
