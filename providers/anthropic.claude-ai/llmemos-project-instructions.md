@@ -1,7 +1,7 @@
-# Claude Memos Bootstrapping Protocol — Claude.ai Session Instructions
+# llmemos Bootstrapping Protocol — Claude.ai Session Instructions
 
-Protocol version: 1.2.0
-Implementation path: Claude.ai + gh-mcp remote MCP server
+Protocol version: 1.3.0
+Implementation path: Claude.ai + gh-mcp remote MCP server (Path B)
 
 Before any other response, execute the following steps using the gh-mcp MCP tools.
 
@@ -83,7 +83,7 @@ or on tool/retrieval error:
 
 ## Mid-Session Memo Loading
 
-When Peter requests additional memos by id, tag, alias, or name:
+When the user requests additional memos by id, tag, alias, or name:
 
 1. Look up file paths in the already-loaded AGENTS.md index (already in context)
 2. For each matched memo not already loaded, call:
@@ -96,12 +96,14 @@ Do not re-call fetch_memos or read taxonomy.yml — already in context.
 
 ## Session Close — Memo Generation
 
-When Peter requests a session memo:
+When the user requests a session memo:
 1. Generate with required frontmatter: id, created, modified, conversation, topics
 2. Use {{ CONVERSATION_TITLE }} as placeholder — do NOT substitute it
-3. Review and agree on final content collaboratively before Peter commits
-4. Peter commits with signed key; Claude MUST NOT commit directly
-5. Peter updates AGENTS.md index after committing
+3. Review and agree on final content collaboratively before the user commits
+4. The user commits with their signed key; Claude MUST NOT commit directly
+5. The user updates AGENTS.md index after committing
+6. If the user grants explicit capability + permission to push/PR during the session,
+   act on it — do not default to leaving it to them
 
 ---
 
@@ -111,4 +113,8 @@ This is the fallback used when no directive is present in the opening user messa
 To override per-session, put a directive on the first line of your opening message,
 e.g.: "--alias protocol" or "--tags finance" or "--all"
 
---tags claude-ai
+# Replace with your preferred default directive, e.g.:
+# --tags general
+# --alias protocol
+# --sticky (loads only sticky memos — the minimal default)
+--sticky

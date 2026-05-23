@@ -26,7 +26,7 @@ The result: the AI starts the session already knowing who you are, what you've b
 | | Path A — Claude Code | Path B — Claude.ai |
 |---|---|---|
 | **Entry point** | `~/bin/llmemos` | Claude.ai Project instructions |
-| **Instructions file** | `~/.claude/bootstrap/llmemos-bootstrap.instructions.md` | `llmemos-claude-ai-project-instructions.md` (paste into Project) |
+| **Instructions file** | `providers/anthropic.claude-code/llmemos-bootstrap.instructions.md` | `providers/anthropic.claude-ai/llmemos-project-instructions.md` |
 | **Repo access** | `git clone` / `git fetch` via Bash tool | `verify_repo_state`, `fetch_memos`, `read_repo_file` via gh-mcp |
 | **Signature verification** | `git log --show-signature` (local GPG) | gh-mcp server (see `mcp-server/`) |
 | **Loading directive** | Appended to system prompt by launcher, or first line of opening message | First line of opening user message, or static default in Project instructions |
@@ -37,13 +37,17 @@ The result: the AI starts the session already knowing who you are, what you've b
 
 ```
 llmemos/
-├── llmemos-protocol.md                       ← Canonical protocol spec (source of truth)
-├── llmemos-claude-ai-project-instructions.md ← Path B: paste into Claude.ai Project
+├── llmemos-protocol.md          ← Canonical protocol spec (source of truth)
+├── providers/
+│   ├── anthropic.claude-code/
+│   │   └── llmemos-bootstrap.instructions.md  ← Path A: copy to ~/.claude/bootstrap/
+│   └── anthropic.claude-ai/
+│       └── llmemos-project-instructions.md    ← Path B: paste into Claude.ai Project
 ├── bin/
-│   ├── llmemos                               ← Path A: launcher script
-│   └── count-alias-usage.py                 ← Utility: tally alias usage from git log
-├── mcp-server/                               ← gh-mcp server for Path B (coming soon)
-└── corpus-template/                          ← Example corpus to fork (coming soon)
+│   ├── llmemos                  ← Path A: launcher script
+│   └── count-alias-usage.py    ← Utility: tally alias usage from git log
+├── mcp-server/                  ← gh-mcp server for Path B (coming soon)
+└── corpus-template/             ← Example corpus to fork (coming soon)
 ```
 
 Your personal memo corpus lives in a **separate private repository** that you create and maintain. The corpus template (coming soon) provides a starting point.
@@ -65,7 +69,7 @@ All commits to your corpus must be GPG-signed.
 
 **2. Install Path A (Claude Code)**
 
-Copy `providers/anthropic.claude-code/llmemos-bootstrap.instructions.md` (coming soon) to `~/.claude/bootstrap/`. Edit to set your corpus repo URL and trusted GPG key fingerprints.
+Copy `providers/anthropic.claude-code/llmemos-bootstrap.instructions.md` to `~/.claude/bootstrap/`. Edit to set your corpus repo URL and trusted GPG key fingerprints.
 
 Symlink the launcher:
 
@@ -75,7 +79,7 @@ ln -s /path/to/llmemos/bin/llmemos ~/bin/llmemos
 
 **3. Install Path B (Claude.ai)**
 
-Deploy the gh-mcp server (see `mcp-server/`), register it as an MCP integration in Claude.ai, and paste the contents of `llmemos-claude-ai-project-instructions.md` into your Claude.ai Project instructions. Edit to set your corpus repo and trusted fingerprints.
+Deploy the gh-mcp server (see `mcp-server/`), register it as an MCP integration in Claude.ai, and paste the contents of `providers/anthropic.claude-ai/llmemos-project-instructions.md` into your Claude.ai Project instructions. Edit to set your corpus repo, trusted fingerprints, and your gh-mcp server URL.
 
 ---
 
