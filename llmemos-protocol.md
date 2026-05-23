@@ -89,17 +89,24 @@ the intent of RFC 2119, though this is not a formal RFC.*
 ### Known Capability Dependency
 
 This protocol's security guarantees depend on the retrieval tool's ability to surface
-cryptographic commit signature status. Two approved paths currently satisfy this requirement:
+cryptographic commit signature status. Two paths currently satisfy this requirement directly:
 
 - **Path A (Claude Code):** local `git`/`gh` CLI via Bash tool — full signature verification
   available natively.
-- **Path B (Claude.ai):** gh-mcp remote MCP server — `verify_repo_state` returns GPG
-  signature status and signer key trust result derived from `git log` on the server.
+- **Path B (Claude.ai / MCP-capable agents):** gh-mcp remote MCP server — `verify_repo_state`
+  returns GPG signature status and signer key trust result derived from `git log` on the server.
 
-If neither path is available, signature verification cannot be performed and the security model
-is materially weakened. In that case Claude MUST state this limitation explicitly at session
-start rather than proceed as if verification succeeded. Web fetch of public repo content is
-insufficient and MUST NOT be used as a substitute, as it bypasses signing verification entirely.
+A third path exists for environments without direct MCP support:
+
+- **Path C (Google Gemini Web / Google Workspace agents):** signature verification is delegated
+  to the CI/CD pipeline (see Path C below). The agent does not verify signatures directly; it
+  relies on the Chain of Provenance model instead.
+
+If no approved path is available, signature verification cannot be performed and the security
+model is materially weakened. In that case Claude MUST state this limitation explicitly at
+session start rather than proceed as if verification succeeded. Web fetch of public repo content
+is insufficient and MUST NOT be used as a substitute, as it bypasses signing verification
+entirely.
 
 ### Session Start Log
 
@@ -138,7 +145,7 @@ The root AGENTS.md MUST contain the following frontmatter as its canonical metad
 ```yaml
 ---
 protocol: claude-memos-bootstrapping
-protocol-version: "1.2.0"
+protocol-version: "1.3.0"
 canonical-repo: github.com/<username>/<repo>
 canonical-branch: <branch>
 created: <ISO8601 timestamp>
@@ -161,7 +168,7 @@ flags before invoking Claude. Claude reads it during Step 3 to validate memo top
 
 ## Method
 
-Claude MUST use one of the two approved retrieval paths as the first action of the session.
+Claude MUST use one of the approved retrieval paths as the first action of the session.
 
 ### Path A — Claude Code (git CLI via Bash tool)
 
@@ -179,7 +186,22 @@ Claude MUST use one of the two approved retrieval paths as the first action of t
 5. The Memo Loading Directive is resolved from: (a) the opening user message, then
    (b) the static default at the end of the Project instructions, then (c) sticky-only
 
-### Common requirements (both paths)
+### Path C — Google Gemini Web / Google Workspace agents (advanced, v1.x not implemented)
+
+*This path is documented for environments that lack direct MCP support (e.g. Gemini Web UI,
+which accesses external content via Google Workspace extensions rather than pluggable MCP
+servers). Implementation is not shipped in this repository for v1.x. See the Chain of
+Provenance section under Security for the trust model.*
+
+1. A CI/CD pipeline (e.g. GitHub Actions) monitors the corpus repo for new signed commits
+2. On each verified commit, the pipeline compiles selected memos into Google Drive documents
+   in a designated `llmemos` folder
+3. The agent reads the compiled documents via the Google Drive extension:
+   `@Google Drive find and read llmemos_INDEX, llmemos_ALL_STICKY, and llmemos_ALIAS_<alias>`
+4. The agent confirms files reside in the designated folder (provenance check) and proceeds
+   with standard validation
+
+### Common requirements (Paths A and B)
 
 - Claude MUST verify that the commits in this branch are cryptographically signed with a secure
   key identifying the committer as the user as specified in the protocol metadata, and MUST
@@ -231,7 +253,7 @@ When the user requests memo loading and the "Claude Memos Bootstrapping Protocol
 
 **Path A (Claude Code):**
 
-1. Read `$HOME/bin/claude-memos` — abort if not present
+1. Read `$HOME/bin/llmemos` — abort if not present
 2. Execute it with `--dry-run` plus any memo flags or aliases the user specified
 3. Follow the resulting instructions procedurally — equivalent to a fresh session start,
    preserving all security safeguards
@@ -347,6 +369,27 @@ factors MUST be surfaced to the user transparently.
   access to the repository.
 - Significant changes to any basic rules MUST be documented clearly with rationale and SHOULD
   cite references if applicable.
+
+### Chain of Provenance (Path C security model)
+
+Because Path C cannot perform native GPG signature verification in the web UI, it relies on a
+Chain of Provenance as a functional equivalent to the signed commit chain:
+
+1. **Source integrity:** All updates originate from the corpus repository, protected by 2FA and
+   signed commits. Only commits signed by a trusted key trigger the sync.
+2. **Verified bridge:** A CI/CD runner (e.g. GitHub Actions) executes the sync only after
+   verifying the GPG signature of the commit against the trusted fingerprints listed in this
+   protocol. An invalid or untrusted signature halts the sync.
+3. **Secure delivery:** The sync pipeline pushes to a designated Google Drive folder via a
+   scoped API token stored as an encrypted CI/CD secret.
+4. **Integrity enforcement:** Write access to the designated `llmemos` Drive folder is
+   restricted exclusively to the verified pipeline. The agent treats file presence in this
+   folder as a proxy for integrity — a weaker guarantee than direct GPG verification, but
+   sufficient given the controlled write channel.
+
+This model is weaker than Paths A and B because trust is delegated to the CI/CD infrastructure
+rather than verified by the agent directly. Users adopting Path C should be aware of this
+trade-off.
 
 ---
 
