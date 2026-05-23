@@ -4,7 +4,9 @@
 .gitleaks.toml
 .pre-commit-config.yaml
 logs/
-.env*
+# Env files — commit .env.example and .envrc.example only; never the real files
+.env
+.envrc
 *.bak
 __pycache__
 # Local symlinks to personal tools (e.g. ~/bin/custom_logger.py → bin/llmemos_logger.py)
