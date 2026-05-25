@@ -36,9 +36,9 @@ and sign the merge commit itself.
 
 - [x] **gh-mcp: merge into `mcp-server/` subdirectory.** Per memo-022 decision, the
   monorepo approach. gh-mcp source lives at `~/git/claude-project/gh-mcp/`. The private
-  `peter216/gh-mcp` repo stays as the deployment record.
+  The private deployment repo stays as the deployment record.
   *Note: `docs/` from gh-mcp was discarded — too many personal server references
-  (`martiangoblin.xyz`, Oracle host details) too deeply embedded to be worth cleaning.
+  (personal server hostnames and host details) too deeply embedded to be worth cleaning.
   The MCP implementation lessons are captured in memo-010 instead.*
 
 - [x] **Corpus template: in this repo as `corpus-template/`.** Keep it simple — the
@@ -143,48 +143,52 @@ and sign the merge commit itself.
 
 ## Phase 4 — Corpus Template
 
-- [ ] **Create `corpus-template/` with the HHGTTG-themed example corpus.**
+- [x] **Create `corpus-template/` with the HHGTTG-themed example corpus.**
   Minimum required files:
   - `AGENTS.md` — protocol frontmatter, example memo index with Zaphod/Arthur/Ford entries
   - `taxonomy.yml` — HHGTTG-themed tags and aliases:
     `dont_panic`, `hitchhiking`, `vogons`, `babel_fish`, `heart_of_gold`, `mice`, etc.
   - `memos/` — 2-3 example memo files showing realistic frontmatter and content format
 
-- [ ] **Add `corpus-template/README.md`.** Explains: fork/use this template, replace
+- [x] **Add `corpus-template/README.md`.** Explains: fork/use this template, replace
   example memos with real ones, set up GPG signing, configure your bootstrap file.
 
 ---
 
 ## Phase 5 — README and Docs Cleanup
 
-- [ ] **Update `README.md` layout diagram and "coming soon" references.**
+- [x] **Update `README.md` layout diagram and "coming soon" references.**
   Remaining items:
   - `mcp-server/` comment still says "(coming soon)" — update to reflect it's real
   - `corpus-template/` comment says "(coming soon)" — update after Phase 4 lands
   - "Full install script coming soon" — rewrite as honest "manual steps for now" or add
     a minimal install script
 
-- [ ] **Verify README layout matches actual `git ls-files` output.**
+- [x] **Verify README layout matches actual `git ls-files` output.**
 
-- [ ] **`docs/` directory** — decided not to carry over the gh-mcp implementation doc
+- [x] **`docs/` directory** — decided not to carry over the gh-mcp implementation doc
   (too personal). No action needed unless something else surfaces.
 
 ---
 
 ## Phase 6 — Final Checks and Release
 
-- [ ] **Scan for personal references.**
+- [x] **Scan for personal references.**
   ```bash
   grep -r "peter216\|martiangoblin\|peter\.rubenstein\|@gmail\.com\|63611E76\|757BECAF\|7E4BE13E\|0A7C57B8" . \
     --include="*.md" --include="*.py" --include="*.yml" --include="*.sh" \
     -l
   ```
   Resolve each hit.
+  *Remaining hits are expected: `IMPLEMENTATION.md:178` is the grep command itself;
+  `corpus-template/AGENTS.md:11` is a back-link to the public project repo.*
 
-- [ ] **Run gitleaks check.**
+- [x] **Run gitleaks check.**
   ```bash
   gitleaks detect --source=. -v
   ```
+
+  *Result: no leaks found (36 commits scanned).*
 
 - [ ] **Confirm `bin/llmemos` runs cleanly with `--dry-run`.**
   ```bash
