@@ -54,6 +54,17 @@ I would like it noted, for the record, that I find Vogon poetry genuinely distre
 not merely as an aesthetic experience but at a physiological level. The AI acknowledged
 this without dismissing it. If Vogon poetry comes up again, I have asked to be warned.
 
+## On the Computer
+
+The Computer I have been assigned is not Eddie. It does not apologise for giving you bad
+news, which I find an improvement. It has not yet referred to me as "buddy" or suggested
+I "have a really nice day." I am cautiously optimistic.
+
+I am using "the Computer" because that is what it is. It processes information and
+responds to queries. Whether there is anything further going on is a question I have
+decided not to pursue at this stage, on the grounds that I have quite enough to be
+getting on with.
+
 ## Working Preferences
 
 - I prefer plain language. Galaxy-brained reasoning that arrives at counterintuitive

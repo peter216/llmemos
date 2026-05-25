@@ -41,7 +41,7 @@ memos:
     title: "First Contact and the Vogon Situation"
     topics: [personal, hitchhiking, vogons, dont_panic]
     sticky: true
-    digest: "Arthur Dent's profile, the destruction of Earth for a hyperspace bypass, Ford Prefect's true identity, and the initial working relationship with the AI assistant."
+    digest: "Arthur Dent's profile, the destruction of Earth for a hyperspace bypass, Ford Prefect's true identity. Arthur's distinction between Eddie and 'the Computer,' and initial working preferences."
 
   - id: session-memo-002
     file: memos/session-memo-002.md
