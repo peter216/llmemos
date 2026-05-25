@@ -45,25 +45,25 @@ llmemos/
 │       └── llmemos-project-instructions.md    ← Path B: paste into Claude.ai Project
 ├── bin/
 │   ├── llmemos                  ← Path A: launcher script
+│   ├── llmemos_logger.py        ← Directive usage logger (called by launcher)
 │   └── count-alias-usage.py    ← Utility: tally alias usage from git log
-├── mcp-server/                  ← gh-mcp server for Path B (coming soon)
-└── corpus-template/             ← Example corpus to fork (coming soon)
+├── mcp-server/                  ← gh-mcp server for Path B (deploy from this directory)
+└── corpus-template/             ← Example corpus to fork as a starting point
 ```
 
-Your personal memo corpus lives in a **separate private repository** that you create and maintain. The corpus template (coming soon) provides a starting point.
+Your personal memo corpus lives in a **separate private repository** that you create and maintain. Fork `corpus-template/` as a starting point.
 
 ---
 
 ## Getting started
 
-> Full install script coming soon. Manual steps for now:
+> No automated install script yet — manual steps:
 
 **1. Create your corpus repository**
 
-Create a private GitHub repo (e.g. `your-username/my-llmemos`) with:
-- `AGENTS.md` — memo index
-- `taxonomy.yml` — tag definitions and aliases
-- `memos/` — your session memo files
+Fork or copy `corpus-template/` into a new private GitHub repo (e.g. `your-username/my-llmemos`).
+It includes a ready-to-edit `AGENTS.md`, `taxonomy.yml`, and example memo files.
+See `corpus-template/README.md` for step-by-step instructions.
 
 All commits to your corpus must be GPG-signed.
 
