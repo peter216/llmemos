@@ -45,6 +45,7 @@ llmemos/
 │       └── llmemos-project-instructions.md    ← Path B: paste into Claude.ai Project
 ├── bin/
 │   ├── llmemos                  ← Path A: launcher script
+│   ├── llmemos-publish          ← Publish a new memo to your corpus (see below)
 │   ├── llmemos_logger.py        ← Directive usage logger (called by launcher)
 │   └── count-alias-usage.py    ← Utility: tally alias usage from git log
 ├── mcp-server/                  ← gh-mcp server for Path B (deploy from this directory)
@@ -99,12 +100,26 @@ gpg --list-secret-keys --keyid-format LONG
 
 1. At session close, ask the AI to generate a session memo
 2. Review and agree on content collaboratively
-3. The AI outputs the file with `{{ CONVERSATION_TITLE }}` as a placeholder
-4. Substitute the placeholder with the actual conversation title
-5. Add an entry to `AGENTS.md` in your corpus repo
-6. Commit with your GPG-signed key and push
+3. The AI outputs the file to `memos/` in your corpus repo with `{{ CONVERSATION_TITLE }}`
+   as a placeholder for the conversation title
+4. Run `llmemos-publish` from your corpus root:
 
-The AI does not commit to your corpus. You are the sole committer.
+   ```bash
+   /path/to/llmemos/bin/llmemos-publish
+   # or symlink it: ln -s /path/to/llmemos/bin/llmemos-publish ~/bin/llmemos-publish
+   ```
+
+   The script prompts for title, digest, topics, and stickiness; substitutes the
+   placeholder; updates the `AGENTS.md` index; shows a diff for review; and commits
+   and pushes with a GPG-signed commit.
+5. Done — the memo is in your corpus and will load in future sessions.
+
+`llmemos-publish` requires Python 3.8+ and no external packages. Pass `--dry-run` to
+preview changes without writing anything.
+
+The AI does not commit to your corpus directly. If you set `agent-write-access:
+pull-request` in your `AGENTS.md` frontmatter, the AI may push a branch and open a PR
+for your review — but you must GPG-sign the merge commit.
 
 ---
 
