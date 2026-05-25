@@ -1,6 +1,6 @@
 ---
 protocol: llmemos-bootstrapping
-version: "1.3.0"
+version: "1.0.0"
 canonical-repo: github.com/<your-username>/<your-corpus-repo>
 canonical-branch: main
 canonical-google-drive-folder: llmemos
@@ -13,7 +13,7 @@ trusted-signing-key-fingerprints:
 
 # llmemos Bootstrapping Protocol
 
-Version: 1.3.0
+Version: 1.0.0
 
 This file documents the bootstrapping protocol for the llmemos project. It should be kept in sync with the implementation files listed in the sync table below.
 
@@ -40,16 +40,27 @@ Implementation files:
 
 ## Changelog
 
-See [CHANGELOG.rst](./CHANGELOG.rst) for revision history.
-
-For revision history prior to v1.0.0, see [CHANGELOG.pre-v1.0.0.md](./CHANGELOG.pre-v1.0.0.md).
+See [CHANGELOG.md](./CHANGELOG.md) for revision history.
 
 ## Status
 
-**Claude Code path:** Fully operational as of v1.0.0. Sessions started via `claude-launcher` clone the repo, verify GPG signatures, and load memos via local git CLI. See the llmemos repo CHANGELOG for history.
+**Claude Code path:** Fully operational. Sessions started via `claude-launcher` clone the repo, verify GPG signatures, and load memos via local git CLI. See the llmemos repo CHANGELOG for history.
 
-**Claude.ai path:** Operational as of v1.2.0 via the gh-mcp remote MCP server (`https://your-mcp-server.example.com/mcp` — deploy your own; see `mcp-server/`). The server exposes three tools — `verify_repo_state`, `fetch_memos`, and `read_repo_file` — which together provide full protocol capability including signature verification, AGENTS.md parsing, and individual memo file retrieval. To use this path, the gh-mcp integration must be connected in Claude.ai Settings → Integrations, and the Claude.ai Project instructions (see `llmemos-claude-ai-project-instructions.md`
-Appendix A) must be present in the Project used for memo sessions.
+**Claude.ai path:** Fully operational via the gh-mcp remote MCP server (`https://your-mcp-server.example.com/mcp` — deploy your own; see `mcp-server/`). The server exposes three tools — `verify_repo_state`, `fetch_memos`, and `read_repo_file` — which together provide full protocol capability including signature verification, AGENTS.md parsing, and individual memo file retrieval. To use this path, the gh-mcp integration must be connected in Claude.ai Settings → Integrations, and the Claude.ai Project instructions (see `providers/anthropic.claude-ai/llmemos-project-instructions.md`) must be present in the Project used for memo sessions.
+
+## Protocol Lineage
+
+llmemos-bootstrapping v1.0.0 derives from the `claude-memos-bootstrapping` protocol
+developed privately by the same author (versions v1.0.0–v1.3.0, March–May 2026). The two
+protocols are mechanically identical in their core bootstrap mechanism; this public release
+adds the `agent-write-access` capability, generalises all agent references from
+"Claude" to "the agent", and resets the version counter as a clean start for the public
+project.
+
+**Compatibility:** Agents SHOULD accept `protocol: claude-memos-bootstrapping` in a corpus
+AGENTS.md without error, treating it as equivalent to `protocol: llmemos-bootstrapping`.
+The `agent-write-access` field is not defined in the progenitor protocol; agents SHOULD
+ignore it if encountered in a corpus that still declares `claude-memos-bootstrapping`.
 
 ---
 
@@ -134,7 +145,7 @@ The memo repository MUST follow this structure:
 ```
 repo-root/
 ├── AGENTS.md        # REQUIRED: protocol metadata, validation anchor, and memo index
-├── CHANGELOG.rst    # SHOULD be maintained; records additions, edits, and removals of memos
+├── CHANGELOG.md     # SHOULD be maintained; records additions, edits, and removals of memos
 ├── taxonomy.yml     # REQUIRED: canonical tag definitions and named aliases
 └── memos/           # REQUIRED: individual memo files, one per session (sub-files as needed)
     ├── session-memo-001.md
@@ -146,12 +157,17 @@ The root AGENTS.md MUST contain the following frontmatter as its canonical metad
 ```yaml
 ---
 protocol: llmemos-bootstrapping
-protocol-version: "1.3.0"
+protocol-version: "1.0.0"
 canonical-repo: github.com/<username>/<repo>
 canonical-branch: <branch>
 created: <ISO8601 timestamp>
+agent-write-access: pull-request  # optional; omit or remove to disable
 ---
 ```
+
+The `agent-write-access` field is optional. When absent or set to any value other than
+`pull-request`, the standard lifecycle applies and the agent MUST NOT commit to the repo.
+See Memo Lifecycle for the full agent-assisted path.
 
 AGENTS.md MUST also contain a `## Memo Index` section with a YAML block listing all memos.
 Each entry MUST include: `id`, `file`, `created`, `title`, `topics`, `sticky`, and `digest`.
@@ -307,8 +323,11 @@ sub-file carries its own frontmatter and its own entry in the AGENTS.md index.
 
 ## Memo Lifecycle
 
-The agent MUST NOT commit directly to the memo repository. The user is the sole committer in v1
-of this protocol. The following lifecycle applies:
+### Standard Lifecycle
+
+The agent MUST NOT commit directly to the memo repository unless `agent-write-access:
+pull-request` is set in AGENTS.md (see Agent-Assisted Lifecycle below). By default, the user
+is the sole committer. The following lifecycle applies:
 
 1. At session close, the user MAY request that the agent generate a memo for the session.
 2. The agent MUST generate the memo file with `{{ CONVERSATION_TITLE }}` as a placeholder.
@@ -324,9 +343,26 @@ of this protocol. The following lifecycle applies:
 7. If a CHANGELOG file is maintained, the user SHOULD add an entry describing the new or modified
    memo before committing.
 
-This lifecycle ensures human oversight of all content entering the episodic memory corpus. Future
-versions of this protocol MAY introduce supervised agent commit access, but this is explicitly
-out of scope for v1.
+### Agent-Assisted Lifecycle
+
+When AGENTS.md frontmatter includes `agent-write-access: pull-request`, the following
+lifecycle MAY be used instead:
+
+1. At session close, the user MAY ask the agent to generate and propose the memo.
+2. The agent MUST create a branch (e.g. `memo/YYYY-MM-DD-<slug>`) and commit the generated
+   memo file to it. The `{{ CONVERSATION_TITLE }}` placeholder MUST be substituted before
+   committing — the agent SHOULD derive the title from the session or ask the user to confirm.
+3. The agent MUST also commit a proposed AGENTS.md index entry on the same branch, including a
+   proposed `sticky` determination for the user to accept or override.
+4. The agent MUST open a PR against the canonical branch describing the memo content.
+5. The user MUST review the PR content before merging.
+6. The user MUST merge using a GPG-signed merge commit. The signed merge commit is the
+   authoritative entry in the trust chain — unsigned merges MUST be treated as a validation
+   failure by subsequent sessions.
+7. The agent MUST NOT push directly to the canonical branch regardless of this setting.
+
+This lifecycle reduces manual steps while preserving the security guarantee: all content on
+the canonical branch is authorised by a GPG-signed act of the user.
 
 ---
 
