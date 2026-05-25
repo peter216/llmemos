@@ -1,8 +1,5 @@
----
-protocol-version: "1.3.0"
----
-
 # llmemos Taxonomy — Example Corpus
+# protocol-version: 1.3.0
 #
 # This is a sample taxonomy using a Hitchhiker's Guide to the Galaxy theme.
 # Replace all tags and aliases with ones that reflect your own topics.
@@ -62,15 +59,12 @@ aliases:
   survival:
     description: "Everything needed to get through the day alive and reasonably sane"
     tags: [dont_panic, hitchhiking, towel]
-
   universe:
     description: "The big questions — meaning, computation, and cosmic perspective"
     tags: [philosophy, deep_thought, improbability]
-
   people:
     description: "Key individuals and beings encountered in the journey"
     tags: [zaphod, dolphins, mice]
-
   sticky:
     description: "Shorthand for loading all sticky memos (reserved alias — do not redefine)"
     tags: []
