@@ -1,6 +1,6 @@
 ---
 protocol: llmemos-bootstrapping
-protocol-version: "1.3.0"
+protocol-version: "1.0.0"
 canonical-repo: github.com/<your-username>/<your-corpus-repo>
 canonical-branch: main
 created: 2026-01-02T12:00:00Z

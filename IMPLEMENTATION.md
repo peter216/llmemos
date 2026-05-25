@@ -1,8 +1,8 @@
 # llmemos — Release Implementation Plan
 
 **Branch:** `WIP` → target merge to `main` when all phases complete
-**Target release:** v1.3.0
-**Status:** Phases 0–3 complete. Phases 4–6 remaining.
+**Target release:** v1.0.0
+**Status:** Phases 0–5 complete. Phase 6 remaining.
 
 This document plots the path from the current WIP state to a release-ready public
 repository. Phases are sequential. Each task carries a checkbox; mark complete as work
@@ -18,7 +18,7 @@ references. Peter's real configuration lives in chezmoi (not in this repo). When
 any file that contains configuration, verify it uses placeholders before committing.
 
 **The WIP branch.** All work lands on `WIP`. No squash on merge to main — preserve
-commit history for changelog accuracy. Tag `v1.3.0` immediately after merge.
+commit history for changelog accuracy. Tag `v1.0.0` immediately after merge.
 
 **Commits on WIP are unsigned** (GPG signing requires a TTY; Claude Code runs without
 one). Before merging to main, amend or re-sign the WIP commits, or accept them as-is
@@ -76,7 +76,7 @@ and sign the merge commit itself.
 - [x] **Fix protocol spec: Session Resume Path A.**
   Corrected stale script name `claude-memos` → `llmemos`.
 
-- [x] **Update CHANGELOG.md with v1.3.0 entry.**
+- [x] **Update CHANGELOG.md with v1.3.0 entry (now v1.0.0).**
   *Note: `corpus-template/` entry is included in the changelog but the directory itself
   lands in Phase 4. That's fine — the changelog documents the release as a whole.*
 
@@ -203,18 +203,18 @@ and sign the merge commit itself.
 
 - [ ] **Merge `WIP` → `main`.** No squash.
   ```bash
-  git checkout main && git merge WIP --no-ff -m "chore: release v1.3.0"
+  git checkout main && git merge WIP --no-ff -m "chore: release v1.0.0"
   ```
 
-- [ ] **Tag `v1.3.0`.**
+- [ ] **Tag `v1.0.0`.**
   ```bash
-  git tag -s v1.3.0 -m "llmemos v1.3.0"
+  git tag -s v1.0.0 -m "llmemos v1.0.0"
   git push origin main --tags
   ```
 
 ---
 
-## Deferred (not blocking v1.3.0)
+## Deferred (not blocking v1.0.0)
 
 - Automated install script
 - GitHub Actions workflow for CI (run tests on push)

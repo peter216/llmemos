@@ -1,6 +1,6 @@
 # llmemos Bootstrapping Protocol — Claude.ai Session Instructions
 
-Protocol version: 1.3.0
+Protocol version: 1.0.0
 Implementation path: Claude.ai + gh-mcp remote MCP server (Path B)
 
 Before any other response, execute the following steps using the gh-mcp MCP tools.

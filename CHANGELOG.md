@@ -1,5 +1,35 @@
 # Changelog
 
+## v1.0.0 (2026-05-25) — llmemos-bootstrapping public release
+
+### Added
+
+- `agent-write-access: pull-request` optional field in `AGENTS.md` frontmatter — when
+  set, the agent MAY push a branch and open a PR; user MUST GPG-sign the merge commit;
+  the agent MUST NOT push directly to the canonical branch
+- Agent-Assisted Lifecycle section in protocol spec documenting the PR-based write path
+- Protocol Lineage section in protocol spec documenting derivation from
+  `claude-memos-bootstrapping` and backwards compatibility note for existing corpora
+- `corpus-template/` — HHGTTG-themed example corpus for new users to fork
+
+### Changed
+
+- Protocol renamed: `claude-memos-bootstrapping` → `llmemos-bootstrapping`; existing
+  corpora using `protocol: claude-memos-bootstrapping` remain valid (backwards-compatible)
+- Version numbering reset to 1.0.0 as the first public release of the renamed protocol
+- All generic "Claude" references in protocol spec replaced with "the agent"; product-
+  specific names (Claude Code, Claude.ai) retained where appropriate
+- `AGENTS.md` frontmatter example updated to `protocol-version: "1.0.0"`
+- `providers/anthropic.claude-code/llmemos-bootstrap.instructions.md`: version → 1.0.0
+- `providers/anthropic.claude-ai/llmemos-project-instructions.md`: version → 1.0.0
+
+---
+
+## Prior history (claude-memos-bootstrapping)
+
+The entries below document the evolution of this protocol under its previous name.
+Version numbers are preserved as originally assigned.
+
 ## v1.3.0 (2026-05-22)
 
 ### Added

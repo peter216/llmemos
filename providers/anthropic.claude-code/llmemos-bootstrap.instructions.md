@@ -5,7 +5,7 @@ applyTo: '**'
 
 # llmemos Bootstrapping Protocol — Claude Code Session Instructions
 
-**Protocol version:** 1.3.0
+**Protocol version:** 1.0.0
 **Implementation path:** Claude Code + local git/gh CLI (Path A)
 
 This instruction activates the llmemos Bootstrapping Protocol. The canonical protocol
