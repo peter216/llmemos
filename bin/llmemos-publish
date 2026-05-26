@@ -13,24 +13,39 @@ Usage:
 
 import argparse
 import difflib
+import os
 import re
 import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 
-def find_corpus_root(start: Path) -> Path:
-    """Walk up from start until a directory containing AGENTS.md and memos/ is found."""
-    current = start.resolve()
+def find_corpus_root(repo_path_arg: Optional[str]) -> Path:
+    """Resolve the corpus root.
+
+    Priority:
+      1. --repo-path argument
+      2. MEMO_REPO_PATH environment variable
+      3. Walk up from cwd looking for AGENTS.md + memos/
+    """
+    if repo_path_arg:
+        return Path(repo_path_arg).resolve()
+
+    env_path = os.environ.get("MEMO_REPO_PATH")
+    if env_path:
+        return Path(env_path).resolve()
+
+    current = Path.cwd().resolve()
     while current != current.parent:
         if (current / "AGENTS.md").exists() and (current / "memos").is_dir():
             return current
         current = current.parent
     sys.exit(
-        f"Cannot find corpus root (AGENTS.md + memos/) from {start}\n"
-        "Run from inside your corpus repo, or use --repo-path."
+        "Cannot find corpus root (AGENTS.md + memos/).\n"
+        "Set MEMO_REPO_PATH, run from inside your corpus repo, or use --repo-path."
     )
 
 
@@ -162,9 +177,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    corpus_root = find_corpus_root(
-        Path(args.repo_path) if args.repo_path else Path.cwd()
-    )
+    corpus_root = find_corpus_root(args.repo_path)
     memos_dir = corpus_root / "memos"
     agents_path = corpus_root / "AGENTS.md"
 
