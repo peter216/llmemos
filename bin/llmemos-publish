@@ -76,12 +76,14 @@ def pause(message: str) -> None:
 
 def show_diff(label: str, before: str, after: str) -> None:
     """Print a unified diff of before vs after."""
-    diff = list(difflib.unified_diff(
-        before.splitlines(keepends=True),
-        after.splitlines(keepends=True),
-        fromfile=f"a/{label}",
-        tofile=f"b/{label}",
-    ))
+    diff = list(
+        difflib.unified_diff(
+            before.splitlines(keepends=True),
+            after.splitlines(keepends=True),
+            fromfile=f"a/{label}",
+            tofile=f"b/{label}",
+        )
+    )
     print()
     if diff:
         print(f"--- {label} ---")
@@ -91,15 +93,35 @@ def show_diff(label: str, before: str, after: str) -> None:
         print(f"(No changes in {label})")
 
 
+def get_title_and_topics(content: str) -> tuple[str, list]:
+    """Extract the title and topics from a memo file."""
+    title = re.search(r"^title:\s*(.*)$", content, re.MULTILINE)
+    if title:
+        title = title.group(1)
+    else:
+        title = ""
+        print("Warning: title not found in memo file")
+    topics = re.search(r"^topics:\s*\[(.*)\]$", content, re.MULTILINE)
+    if topics:
+        topics = [t.strip() for t in topics.group(1).split(",") if t.strip()]
+    else:
+        topics = []
+        print("Warning: topics not found in memo file")
+    return title, topics
+
+
 def apply_memo_substitutions(content: str, title: str, topics: list) -> str:
     """Substitute {{ CONVERSATION_TITLE }} and the topics line in a memo file."""
-    content = re.sub(r"\{\{\s*CONVERSATION_TITLE\s*\}\}", title, content)
-    content = re.sub(
-        r"^topics:.*$",
-        "topics: [{}]".format(", ".join(topics)),
-        content,
-        flags=re.MULTILINE,
-    )
+    if title != "accept_current":
+        content = re.sub(r"\{\{\s*CONVERSATION_TITLE\s*\}\}", title, content, count=1)
+    if topics != ["accept_current"]:
+        content = re.sub(
+            r"^topics:.*$",
+            "topics: [{}]".format(", ".join(topics)),
+            content,
+            count=1,
+            flags=re.MULTILINE,
+        )
     return content
 
 
@@ -110,6 +132,8 @@ def build_agents_entry(
     digest: str,
     topics: list,
     sticky: bool,
+    original_title: str,
+    original_topics: list,
 ) -> str:
     """Build the YAML block for a new AGENTS.md memo index entry."""
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -119,15 +143,20 @@ def build_agents_entry(
             return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
         return s
 
-    return "\n".join([
-        f"  - id: {memo_id}",
-        f"    file: memos/{memo_filename}",
-        f"    created: {today}",
-        f"    title: {yaml_str(title)}",
-        f"    topics: [{', '.join(topics)}]",
-        f"    sticky: {str(sticky).lower()}",
-        f"    digest: {yaml_str(digest)}",
-    ])
+    final_title = original_title if title == "accept_current" else title
+    final_topics = original_topics if topics == ["accept_current"] else topics
+
+    return "\n".join(
+        [
+            f"  - id: {memo_id}",
+            f"    file: memos/{memo_filename}",
+            f"    created: {today}",
+            f"    title: {yaml_str(final_title)}",
+            f"    topics: [{', '.join(final_topics)}]",
+            f"    sticky: {str(sticky).lower()}",
+            f"    digest: {yaml_str(digest)}",
+        ]
+    )
 
 
 def insert_into_agents(content: str, entry: str) -> str:
@@ -141,7 +170,9 @@ def insert_into_agents(content: str, entry: str) -> str:
 def validate_topics(raw: str) -> list:
     """Validate and split a comma-separated topics string."""
     # Allow lowercase letters, digits, hyphens, underscores (taxonomy uses both)
-    if not re.fullmatch(r"[a-z0-9_][a-z0-9_\-]*(,[a-z0-9_][a-z0-9_\-]*)*", raw.replace(" ", "")):
+    if not re.fullmatch(
+        r"[a-z0-9_][a-z0-9_\-]*(,[a-z0-9_][a-z0-9_\-]*)*", raw.replace(" ", "")
+    ):
         sys.exit(
             "Topics must be lowercase alphanumeric with hyphens/underscores, "
             "separated by commas. No trailing comma."
@@ -193,9 +224,11 @@ def main() -> None:
         sys.exit(f"File not found: {memo_path}")
 
     memo_id = memo_path.stem
-    title = prompt("Conversation title")
+    title = prompt("Conversation title", default="accept_current")
     digest = prompt("Brief digest / summary")
-    topics_raw = prompt("Topics (comma-separated, e.g. personal,protocol)")
+    topics_raw = prompt(
+        "Topics (comma-separated, e.g. personal,protocol)", default="accept_current"
+    )
     sticky_raw = prompt("Sticky in AGENTS.md?", default="false")
 
     topics = validate_topics(topics_raw)
@@ -205,6 +238,7 @@ def main() -> None:
 
     # --- Preview memo substitutions ---
     original_memo = memo_path.read_text()
+    original_title, original_topics = get_title_and_topics(original_memo)
     updated_memo = apply_memo_substitutions(original_memo, title, topics)
     show_diff(f"memos/{memo_filename}", original_memo, updated_memo)
     pause(f"Review memos/{memo_filename} changes above.")
@@ -212,15 +246,22 @@ def main() -> None:
     # --- Preview AGENTS.md update ---
     original_agents = agents_path.read_text()
 
-    if re.search(
-        rf"^\s+id:\s+{re.escape(memo_id)}\b", original_agents, re.MULTILINE
-    ):
+    if re.search(rf"^\s+id:\s+{re.escape(memo_id)}\b", original_agents, re.MULTILINE):
         sys.exit(
             f"Entry 'id: {memo_id}' already exists in AGENTS.md — "
             "aborting to prevent duplicate."
         )
 
-    entry = build_agents_entry(memo_id, memo_filename, title, digest, topics, sticky)
+    entry = build_agents_entry(
+        memo_id,
+        memo_filename,
+        title,
+        digest,
+        topics,
+        sticky,
+        original_title,
+        original_topics,
+    )
     updated_agents = insert_into_agents(original_agents, entry)
     show_diff("AGENTS.md", original_agents, updated_agents)
     pause("Review AGENTS.md changes above.")
