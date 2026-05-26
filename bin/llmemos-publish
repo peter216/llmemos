@@ -1,0 +1,260 @@
+#!/usr/bin/env python3
+"""
+llmemos-publish — prepare and commit a new memo to the corpus.
+
+Substitutes template placeholders in the memo file, updates the AGENTS.md
+memo index, and commits both files with a GPG-signed commit.
+
+Run from inside your corpus repo, or use --repo-path to specify its location.
+
+Usage:
+  llmemos-publish [--repo-path PATH] [--dry-run]
+"""
+
+import argparse
+import difflib
+import os
+import re
+import shutil
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
+
+
+def find_corpus_root(repo_path_arg: Optional[str]) -> Path:
+    """Resolve the corpus root.
+
+    Priority:
+      1. --repo-path argument
+      2. MEMO_REPO_PATH environment variable
+      3. Walk up from cwd looking for AGENTS.md + memos/
+    """
+    if repo_path_arg:
+        return Path(repo_path_arg).resolve()
+
+    env_path = os.environ.get("MEMO_REPO_PATH")
+    if env_path:
+        return Path(env_path).resolve()
+
+    current = Path.cwd().resolve()
+    while current != current.parent:
+        if (current / "AGENTS.md").exists() and (current / "memos").is_dir():
+            return current
+        current = current.parent
+    sys.exit(
+        "Cannot find corpus root (AGENTS.md + memos/).\n"
+        "Set MEMO_REPO_PATH, run from inside your corpus repo, or use --repo-path."
+    )
+
+
+def prompt(label: str, default: str = "") -> str:
+    """Prompt for a non-empty string, with an optional default."""
+    while True:
+        suffix = f" [{default}]" if default else ""
+        try:
+            value = input(f"{label}{suffix}: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nAborted.", file=sys.stderr)
+            sys.exit(1)
+        if not value and default:
+            return default
+        if value:
+            return value
+        print("  (required)", file=sys.stderr)
+
+
+def pause(message: str) -> None:
+    """Print message and wait for Enter, or abort on Ctrl-C."""
+    try:
+        input(f"\n{message}\nPress Enter to continue or Ctrl-C to abort: ")
+    except (EOFError, KeyboardInterrupt):
+        print("\nAborted.", file=sys.stderr)
+        sys.exit(1)
+
+
+def show_diff(label: str, before: str, after: str) -> None:
+    """Print a unified diff of before vs after."""
+    diff = list(difflib.unified_diff(
+        before.splitlines(keepends=True),
+        after.splitlines(keepends=True),
+        fromfile=f"a/{label}",
+        tofile=f"b/{label}",
+    ))
+    print()
+    if diff:
+        print(f"--- {label} ---")
+        sys.stdout.writelines(diff)
+        print()
+    else:
+        print(f"(No changes in {label})")
+
+
+def apply_memo_substitutions(content: str, title: str, topics: list) -> str:
+    """Substitute {{ CONVERSATION_TITLE }} and the topics line in a memo file."""
+    content = re.sub(r"\{\{\s*CONVERSATION_TITLE\s*\}\}", title, content)
+    content = re.sub(
+        r"^topics:.*$",
+        "topics: [{}]".format(", ".join(topics)),
+        content,
+        flags=re.MULTILINE,
+    )
+    return content
+
+
+def build_agents_entry(
+    memo_id: str,
+    memo_filename: str,
+    title: str,
+    digest: str,
+    topics: list,
+    sticky: bool,
+) -> str:
+    """Build the YAML block for a new AGENTS.md memo index entry."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    def yaml_str(s: str) -> str:
+        if any(c in s for c in ('"', "'", ":", "#", "[", "]", "{", "}", "\n")):
+            return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+        return s
+
+    return "\n".join([
+        f"  - id: {memo_id}",
+        f"    file: memos/{memo_filename}",
+        f"    created: {today}",
+        f"    title: {yaml_str(title)}",
+        f"    topics: [{', '.join(topics)}]",
+        f"    sticky: {str(sticky).lower()}",
+        f"    digest: {yaml_str(digest)}",
+    ])
+
+
+def insert_into_agents(content: str, entry: str) -> str:
+    """Insert entry before the last closing ``` fence in AGENTS.md."""
+    last_fence = content.rfind("\n```")
+    if last_fence == -1:
+        sys.exit("Cannot find closing ``` fence in AGENTS.md — aborting.")
+    return content[:last_fence] + "\n\n" + entry + content[last_fence:]
+
+
+def validate_topics(raw: str) -> list:
+    """Validate and split a comma-separated topics string."""
+    # Allow lowercase letters, digits, hyphens, underscores (taxonomy uses both)
+    if not re.fullmatch(r"[a-z0-9_][a-z0-9_\-]*(,[a-z0-9_][a-z0-9_\-]*)*", raw.replace(" ", "")):
+        sys.exit(
+            "Topics must be lowercase alphanumeric with hyphens/underscores, "
+            "separated by commas. No trailing comma."
+        )
+    return [t.strip() for t in raw.split(",") if t.strip()]
+
+
+def git(args: list, cwd: Path, dry_run: bool) -> None:
+    """Run a git subcommand, or print it in dry-run mode."""
+    cmd = ["git"] + args
+    if dry_run:
+        print(f"  [dry-run] {' '.join(cmd)}")
+        return
+    result = subprocess.run(cmd, cwd=cwd)
+    if result.returncode != 0:
+        sys.exit(f"Command failed (exit {result.returncode}): {' '.join(cmd)}")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "--repo-path",
+        metavar="PATH",
+        help="Path to the corpus repo root (default: auto-detect from cwd)",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would be done without modifying any files",
+    )
+    args = parser.parse_args()
+
+    corpus_root = find_corpus_root(args.repo_path)
+    memos_dir = corpus_root / "memos"
+    agents_path = corpus_root / "AGENTS.md"
+
+    print(f"Corpus root: {corpus_root}")
+    if args.dry_run:
+        print("[dry-run — no files will be modified]")
+    print()
+
+    # --- Gather inputs ---
+    memo_filename = prompt("Memo filename (e.g. session-memo-011.md)")
+    memo_path = memos_dir / memo_filename
+    if not memo_path.exists():
+        sys.exit(f"File not found: {memo_path}")
+
+    memo_id = memo_path.stem
+    title = prompt("Conversation title")
+    digest = prompt("Brief digest / summary")
+    topics_raw = prompt("Topics (comma-separated, e.g. personal,protocol)")
+    sticky_raw = prompt("Sticky in AGENTS.md?", default="false")
+
+    topics = validate_topics(topics_raw)
+    if sticky_raw not in ("true", "false"):
+        sys.exit("Sticky must be 'true' or 'false'.")
+    sticky = sticky_raw == "true"
+
+    # --- Preview memo substitutions ---
+    original_memo = memo_path.read_text()
+    updated_memo = apply_memo_substitutions(original_memo, title, topics)
+    show_diff(f"memos/{memo_filename}", original_memo, updated_memo)
+    pause(f"Review memos/{memo_filename} changes above.")
+
+    # --- Preview AGENTS.md update ---
+    original_agents = agents_path.read_text()
+
+    if re.search(
+        rf"^\s+id:\s+{re.escape(memo_id)}\b", original_agents, re.MULTILINE
+    ):
+        sys.exit(
+            f"Entry 'id: {memo_id}' already exists in AGENTS.md — "
+            "aborting to prevent duplicate."
+        )
+
+    entry = build_agents_entry(memo_id, memo_filename, title, digest, topics, sticky)
+    updated_agents = insert_into_agents(original_agents, entry)
+    show_diff("AGENTS.md", original_agents, updated_agents)
+    pause("Review AGENTS.md changes above.")
+
+    if args.dry_run:
+        git(["add", f"memos/{memo_filename}", "AGENTS.md"], corpus_root, dry_run=True)
+        git(["commit", "-S", "-m", f"{memo_id}: {title}"], corpus_root, dry_run=True)
+        git(["push"], corpus_root, dry_run=True)
+        print("\n[dry-run complete — no changes made]")
+        return
+
+    # --- Write files with backup/restore on failure ---
+    backup_memo = memo_path.with_suffix(memo_path.suffix + ".bak")
+    backup_agents = agents_path.with_suffix(".bak")
+    shutil.copy2(memo_path, backup_memo)
+    shutil.copy2(agents_path, backup_agents)
+    try:
+        memo_path.write_text(updated_memo)
+        agents_path.write_text(updated_agents)
+    except Exception as exc:
+        shutil.copy2(backup_memo, memo_path)
+        shutil.copy2(backup_agents, agents_path)
+        sys.exit(f"Write failed (restored from backup): {exc}")
+    finally:
+        backup_memo.unlink(missing_ok=True)
+        backup_agents.unlink(missing_ok=True)
+
+    # --- Commit and push ---
+    git(["add", f"memos/{memo_filename}", "AGENTS.md"], corpus_root, dry_run=False)
+    git(["commit", "-S", "-m", f"{memo_id}: {title}"], corpus_root, dry_run=False)
+    git(["push"], corpus_root, dry_run=False)
+
+    print(f"\nPublished: {memo_id}")
+
+
+if __name__ == "__main__":
+    main()

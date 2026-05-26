@@ -1,0 +1,70 @@
+# llmemos Taxonomy — Example Corpus
+# protocol-version: 1.0.0
+#
+# This is a sample taxonomy using a Hitchhiker's Guide to the Galaxy theme.
+# Replace all tags and aliases with ones that reflect your own topics.
+#
+# Tags: canonical names for memo topics. Keep them lowercase, underscore-separated.
+# Aliases: named shorthand that expand to one or more tags. Useful for common
+#   combinations you filter on often.
+
+tags:
+
+  # --- Personal and relationship context ---
+  personal:
+    description: "Personal background, preferences, and life context"
+
+  # --- Hitchhiking and survival ---
+  dont_panic:
+    description: "Situations requiring calm under pressure; the cardinal rule"
+
+  hitchhiking:
+    description: "Inter-galactic travel, transport logistics, and related resourcefulness"
+
+  towel:
+    description: "Essential equipment; preparation and self-sufficiency"
+
+  # --- Locations and technology ---
+  heart_of_gold:
+    description: "The Infinite Improbability Drive-equipped ship; notes on its crew and incidents"
+
+  improbability:
+    description: "Events caused by or related to the Infinite Improbability Drive"
+
+  vogons:
+    description: "Encounters with Vogon bureaucracy, poetry, and demolition crews"
+
+  babel_fish:
+    description: "Translation, communication, and the nature of language"
+
+  deep_thought:
+    description: "The seven-and-a-half-million-year computer; computation and contemplation"
+
+  # --- Beings and factions ---
+  zaphod:
+    description: "Zaphod Beeblebrox — President of the Galaxy, Ford's semi-cousin"
+
+  mice:
+    description: "The pan-dimensional beings who commissioned the Earth; research context"
+
+  dolphins:
+    description: "Second most intelligent species on Earth; their departure noted"
+
+  # --- Abstract and philosophical ---
+  philosophy:
+    description: "Existential questions, meaning, and the nature of the universe"
+
+aliases:
+
+  survival:
+    description: "Everything needed to get through the day alive and reasonably sane"
+    tags: [dont_panic, hitchhiking, towel]
+  universe:
+    description: "The big questions — meaning, computation, and cosmic perspective"
+    tags: [philosophy, deep_thought, improbability]
+  people:
+    description: "Key individuals and beings encountered in the journey"
+    tags: [zaphod, dolphins, mice]
+  sticky:
+    description: "Shorthand for loading all sticky memos (reserved alias — do not redefine)"
+    tags: []
