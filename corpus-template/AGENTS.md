@@ -1,9 +1,14 @@
 ---
 protocol: llmemos-bootstrapping
-protocol-version: "1.0.0"
+protocol-version: "1.1.0"
 canonical-repo: github.com/<your-username>/<your-corpus-repo>
 canonical-branch: main
 created: 2026-01-02T12:00:00Z
+trusted-infrastructure-signing-keys:
+  # Optional. Add key IDs for platform infrastructure signers whose merge commits should
+  # score 0 (not 1) when the parent content commit is signed by a personal trusted key.
+  # GitHub web-flow: git log --format="%GK" <merge-sha>  (typically B5690EEEBB952194 or similar)
+  # - "KEY_ID_HERE"  # GitHub web-flow merge signing key
 ---
 
 # llmemos Memo Corpus — Example

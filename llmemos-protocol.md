@@ -1,6 +1,6 @@
 ---
 protocol: llmemos-bootstrapping
-version: "1.0.0"
+version: "1.1.0"
 canonical-repo: github.com/<your-username>/<your-corpus-repo>
 canonical-branch: main
 canonical-google-drive-folder: llmemos
@@ -9,21 +9,30 @@ trusted-signing-key-fingerprints:
   - "BBBB1111222233334444555566667777CCCC8888"  # your-email@example.com, secondary key
   # Add your own GPG key fingerprints here. All corpus commits must be signed by one of these.
   # Run: gpg --list-secret-keys --keyid-format LONG
+trusted-infrastructure-signing-keys:
+  # Optional. Key IDs of trusted infrastructure signers (e.g. GitHub's web-flow merge key).
+  # A commit signed by an infrastructure key scores 0 (not 1) when its immediate parent
+  # content commit is signed by a personal trusted key above. Infrastructure keys MUST NOT
+  # appear as the sole signer on content commits — only on merge commits.
+  # To find GitHub's current key ID: git log --format="%GK" <merge-commit-sha>
+  # To import it for local verification: curl https://github.com/web-flow.gpg | gpg --import
+  # - "KEY_ID_HERE"  # GitHub web-flow merge signing key
 ---
 
 # llmemos Bootstrapping Protocol
 
-Version: 1.0.0
+Version: 1.1.0
 
 This file documents the bootstrapping protocol for the llmemos project. It should be kept in sync with the implementation files listed in the sync table below.
 
-  ┌─────────────────────────────────────┬───────────────────────────────────────────────────────────┐
-  │               Element               │                    All implementation files                │
-  ├─────────────────────────────────────┼───────────────────────────────────────────────────────────┤
-  │ Protocol Version                    │ llmemos-bootstrap.instructions.md, AGENTS.md, taxonomy.yml │
-  │ Trusted Signing Key Fingerprints    │ llmemos-bootstrap.instructions.md, sync_gdrive.py          │
-  │ Canonical Repo / Branch / Folder    │ llmemos-bootstrap.instructions.md, sync_gdrive.py          │
-  └─────────────────────────────────────┴───────────────────────────────────────────────────────────┘
+  ┌─────────────────────────────────────────────┬───────────────────────────────────────────────────────────┐
+  │               Element                       │                    All implementation files                │
+  ├─────────────────────────────────────────────┼───────────────────────────────────────────────────────────┤
+  │ Protocol Version                            │ llmemos-bootstrap.instructions.md, AGENTS.md, taxonomy.yml │
+  │ Trusted Signing Key Fingerprints            │ llmemos-bootstrap.instructions.md, sync_gdrive.py          │
+  │ Trusted Infrastructure Signing Key IDs      │ llmemos-bootstrap.instructions.md                          │
+  │ Canonical Repo / Branch / Folder           │ llmemos-bootstrap.instructions.md, sync_gdrive.py          │
+  └─────────────────────────────────────────────┴───────────────────────────────────────────────────────────┘
 
 ## Purpose
 
@@ -356,13 +365,21 @@ lifecycle MAY be used instead:
    proposed `sticky` determination for the user to accept or override.
 4. The agent MUST open a PR against the canonical branch describing the memo content.
 5. The user MUST review the PR content before merging.
-6. The user MUST merge using a GPG-signed merge commit. The signed merge commit is the
-   authoritative entry in the trust chain — unsigned merges MUST be treated as a validation
-   failure by subsequent sessions.
+6. The user MUST merge using a signed merge commit. Two signing modes are accepted:
+   - **Personal key (preferred):** The user merges locally using `git merge --no-ff --gpg-sign`
+     or equivalent. The merge commit carries a personal trusted key signature.
+   - **Infrastructure key (acceptable):** The user merges via a hosted Git platform (e.g. the
+     GitHub web UI or mobile app), producing a merge commit signed by the platform's
+     infrastructure key. This is acceptable provided: (a) the corpus AGENTS.md lists the
+     platform's key ID under `trusted-infrastructure-signing-keys`, and (b) the parent content
+     commit is signed by a personal trusted key. See Validation for scoring rules.
+   Unsigned merges MUST be treated as a validation failure by subsequent sessions regardless
+   of merge method.
 7. The agent MUST NOT push directly to the canonical branch regardless of this setting.
 
 This lifecycle reduces manual steps while preserving the security guarantee: all content on
-the canonical branch is authorised by a GPG-signed act of the user.
+the canonical branch is authorised by a signed act of the user, whether that signature is
+personal (strongest) or infrastructure-delegated (acceptable for remote/mobile workflows).
 
 ---
 
@@ -390,6 +407,28 @@ explicitly when the score is 1 or higher.
 If any single check scores 3, the agent MUST abort and state their reasoning. If two or more
 checks score 2, the agent MUST treat this as equivalent to a score of 3. All scores and
 contributing factors MUST be surfaced to the user transparently.
+
+### Commit Signature Scoring Rules
+
+When evaluating the checked commits for historical coherence, apply the following rules in
+order to each commit:
+
+1. **Personal trusted key signature, valid** → score contribution: 0 (clean)
+2. **Infrastructure key signature** (key ID listed in `trusted-infrastructure-signing-keys`),
+   AND the commit's immediate parent is signed by a personal trusted key → score contribution: 0 (clean)
+   - Rationale: the merge was an authenticated act of the account owner; the content integrity
+     is guaranteed by the parent's personal signature. Infrastructure keys are accepted as
+     delegation, not as a weakening of the trust model.
+3. **Infrastructure key signature** but parent content commit is NOT signed by a personal
+   trusted key → score contribution: 2 (flag to user)
+4. **Unknown key** (not in either trusted list) → score contribution: 2 (flag to user)
+5. **No signature** → score contribution: 3 (abort)
+
+Infrastructure key identification: if `git log --show-signature` reports "Can't check
+signature: No public key", extract the key ID via `git log --format="%GK" -1 <sha>` and
+compare against `trusted-infrastructure-signing-keys` in AGENTS.md. Import the key
+(`curl https://github.com/web-flow.gpg | gpg --import` for GitHub) only if local
+verification output is needed; the key ID comparison is sufficient for scoring.
 
 ---
 

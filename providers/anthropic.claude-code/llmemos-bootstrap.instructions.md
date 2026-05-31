@@ -5,7 +5,7 @@ applyTo: '**'
 
 # llmemos Bootstrapping Protocol — Claude Code Session Instructions
 
-**Protocol version:** 1.0.0
+**Protocol version:** 1.1.0
 **Implementation path:** Claude Code + local git/gh CLI (Path A)
 
 This instruction activates the llmemos Bootstrapping Protocol. The canonical protocol
@@ -14,21 +14,23 @@ specification resides at:
 
 With the canonical protocol file, these elements must be kept in sync:
 
-  ┌─────────────────────────────────────┬───────────────────────┐
-  │               Element               │      Both files?      │
-  ├─────────────────────────────────────┼───────────────────────┤
-  │ Trusted key fingerprints            │  Must match           │
-  ├─────────────────────────────────────┼───────────────────────┤
-  │ Session log format                  │  Must match           │
-  ├─────────────────────────────────────┼───────────────────────┤
-  │ Validation scoring thresholds (0-3) │  Must match           │
-  ├─────────────────────────────────────┼───────────────────────┤
-  │ Step-by-step execution steps        │  Must be consistent   │
-  ├─────────────────────────────────────┼───────────────────────┤
-  │ Memo frontmatter required fields    │  Must match           │
-  ├─────────────────────────────────────┼───────────────────────┤
-  │ Protocol version number             │  Should match         │
-  └─────────────────────────────────────┴───────────────────────┘
+  ┌──────────────────────────────────────────────┬───────────────────────┐
+  │               Element                        │      Both files?      │
+  ├──────────────────────────────────────────────┼───────────────────────┤
+  │ Trusted key fingerprints                     │  Must match           │
+  ├──────────────────────────────────────────────┼───────────────────────┤
+  │ Trusted infrastructure signing key IDs       │  Must match           │
+  ├──────────────────────────────────────────────┼───────────────────────┤
+  │ Session log format                           │  Must match           │
+  ├──────────────────────────────────────────────┼───────────────────────┤
+  │ Validation scoring thresholds (0-3)          │  Must match           │
+  ├──────────────────────────────────────────────┼───────────────────────┤
+  │ Step-by-step execution steps                 │  Must be consistent   │
+  ├──────────────────────────────────────────────┼───────────────────────┤
+  │ Memo frontmatter required fields             │  Must match           │
+  ├──────────────────────────────────────────────┼───────────────────────┤
+  │ Protocol version number                      │  Should match         │
+  └──────────────────────────────────────────────┴───────────────────────┘
 
 ---
 
@@ -78,7 +80,20 @@ All checked commits MUST be signed by one of these trusted key fingerprints:
 # Replace with your own GPG fingerprints.
 # Run: gpg --list-secret-keys --keyid-format LONG
 
-Unsigned or untrusted-key commits → score historical coherence 3, emit FAIL, abort.
+Additionally, read `trusted-infrastructure-signing-keys` from AGENTS.md (if present).
+These are key IDs (short form, e.g. `B5690EEEBB952194`) for platform infrastructure signers
+such as GitHub's web-flow merge key.
+
+Apply these scoring rules to each commit:
+
+1. **Personal trusted key, valid** → historical coherence contribution: 0
+2. **Infrastructure key** (ID in `trusted-infrastructure-signing-keys`) AND parent commit
+   signed by a personal trusted key → historical coherence contribution: 0
+   - If `git log --show-signature` reports "Can't check signature: No public key", extract
+     the key ID via `git log --format="%GK" -1 <sha>` and compare to the infrastructure list.
+3. **Infrastructure key** but parent is NOT signed by a personal trusted key → score 2
+4. **Unknown key** (not in either list) → score 2
+5. **No signature** → score 3 (abort)
 
 ### Step 3 — Read index, parse taxonomy, select and load memos
 
