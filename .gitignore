@@ -12,3 +12,4 @@ __pycache__
 # Local symlinks to personal tools (e.g. ~/bin/custom_logger.py → bin/llmemos_logger.py)
 bin/custom_logger.py
 docs/accelerate/
+.ruff.toml
