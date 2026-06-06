@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-06-05
+
+### Added
+
+- `llmemos-publish` now injects `/rename <title>` into the active Claude dtach session
+  after a successful commit+push, keeping the local session name in sync with the memo
+  title. Tries `/tmp/claude-rc` first, falls back to `/tmp/claude-main`; graceful no-op
+  if no session is running.
+- `llmemos-publish --no-rename` flag to skip the session rename step.
+- `llmemos-publish --dry-run` now previews the `/rename` command alongside the git
+  operations.
+
+---
+
 ## [1.1.0] - 2026-05-26
 
 ### Added

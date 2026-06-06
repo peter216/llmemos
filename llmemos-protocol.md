@@ -344,7 +344,10 @@ is the sole committer. The following lifecycle applies:
 3. The user and the agent SHOULD review and agree on the final memo content before it is
    committed. This collaborative review is the intended default and SHOULD NOT be skipped.
 4. The user MUST substitute `{{ CONVERSATION_TITLE }}` with the actual conversation name before
-   committing. A helper script MAY be used to prompt for this substitution.
+   committing. A helper script (`llmemos-publish`) MAY be used to prompt for this substitution,
+   update the AGENTS.md index, and commit in one step. If an active agent session is detected,
+   the script also injects `/rename <title>` to keep the local session name in sync with the
+   memo title.
 5. The user MUST add a corresponding entry to the `## Memo Index` in AGENTS.md, including the
    `sticky` determination, before committing.
 6. The user MUST commit using their cryptographically signed key to preserve the integrity of the
