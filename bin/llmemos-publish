@@ -14,10 +14,13 @@ Usage:
 import argparse
 import difflib
 import os
+import pty
 import re
 import shutil
 import subprocess
 import sys
+import time
+import tty
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -191,6 +194,57 @@ def git(args: list, cwd: Path, dry_run: bool) -> None:
         sys.exit(f"Command failed (exit {result.returncode}): {' '.join(cmd)}")
 
 
+## Candidate dtach sockets, in preference order.
+## claude-rc is the primary remote-control session; claude-main is the legacy channels session.
+_RC_SOCKETS = ["/tmp/claude-rc", "/tmp/claude-main"]
+
+
+def rename_session(title: str) -> None:
+    """Inject '/rename <title>' into the active Claude dtach session.
+
+    Tries _RC_SOCKETS in order; uses the first socket that exists.
+    Silently skips if no active session is found — publish succeeds regardless.
+
+    Uses a PTY pair to satisfy dtach's isatty(stdin) check. The slave fd is
+    passed as dtach's stdin/stdout; the trigger text is written to the master.
+    """
+    socket_path = next(
+        (s for s in _RC_SOCKETS if Path(s).is_socket()), None
+    )
+    if socket_path is None:
+        print("  (no active Claude session found — skipping /rename)")
+        return
+
+    command = f"/rename {title}\r"
+    master_fd, slave_fd = pty.openpty()
+    tty.setraw(slave_fd)
+
+    proc = subprocess.Popen(
+        ["dtach", "-a", socket_path, "-e", "", "-r", "none"],
+        stdin=slave_fd,
+        stdout=slave_fd,
+        stderr=subprocess.DEVNULL,
+    )
+    os.close(slave_fd)
+
+    try:
+        os.write(master_fd, command.encode())
+        time.sleep(0.5)
+    finally:
+        try:
+            os.close(master_fd)
+        except OSError:
+            pass
+
+    try:
+        proc.wait(timeout=5)
+        print(f"  Session renamed to: {title}")
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
+        print("  (dtach timed out — session rename may not have applied)", file=sys.stderr)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=__doc__,
@@ -205,6 +259,11 @@ def main() -> None:
         "--dry-run",
         action="store_true",
         help="Show what would be done without modifying any files",
+    )
+    parser.add_argument(
+        "--no-rename",
+        action="store_true",
+        help="Skip injecting /rename into the active Claude session after publishing",
     )
     args = parser.parse_args()
 
@@ -270,6 +329,9 @@ def main() -> None:
         git(["add", f"memos/{memo_filename}", "AGENTS.md"], corpus_root, dry_run=True)
         git(["commit", "-S", "-m", f"{memo_id}: {title}"], corpus_root, dry_run=True)
         git(["push"], corpus_root, dry_run=True)
+        final_title = original_title if title == "accept_current" else title
+        if not args.no_rename:
+            print(f"  [dry-run] /rename {final_title}  (into active Claude session)")
         print("\n[dry-run complete — no changes made]")
         return
 
@@ -295,6 +357,11 @@ def main() -> None:
     git(["push"], corpus_root, dry_run=False)
 
     print(f"\nPublished: {memo_id}")
+
+    # --- Rename the active Claude session to the memo title ---
+    if not args.no_rename:
+        final_title = original_title if title == "accept_current" else title
+        rename_session(final_title)
 
 
 if __name__ == "__main__":
