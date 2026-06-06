@@ -110,12 +110,14 @@ gpg --list-secret-keys --keyid-format LONG
    ```
 
    The script prompts for title, digest, topics, and stickiness; substitutes the
-   placeholder; updates the `AGENTS.md` index; shows a diff for review; and commits
-   and pushes with a GPG-signed commit.
+   placeholder; updates the `AGENTS.md` index; shows a diff for review; commits and
+   pushes with a GPG-signed commit; and injects `/rename <title>` into the active
+   Claude session so the session name matches the memo title.
 5. Done — the memo is in your corpus and will load in future sessions.
 
-`llmemos-publish` requires Python 3.8+ and no external packages. Pass `--dry-run` to
-preview changes without writing anything.
+`llmemos-publish` requires Python 3.8+ and no external packages. Flags:
+- `--dry-run` — preview changes without writing anything
+- `--no-rename` — skip the session rename step
 
 The AI does not commit to your corpus directly. If you set `agent-write-access:
 pull-request` in your `AGENTS.md` frontmatter, the AI may push a branch and open a PR

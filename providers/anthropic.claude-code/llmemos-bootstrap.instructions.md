@@ -224,6 +224,9 @@ When the user requests a session memo:
    (id, file, created, title, topics, sticky, digest)
 6. If the user grants explicit capability + permission to push/PR during the session, act on
    it — do not default to leaving it to them
+7. `llmemos-publish` automatically injects `/rename <title>` into the active Claude session
+   after publishing, keeping the local session name in sync with the memo title. Pass
+   `--no-rename` to skip this step.
 
 ---
 
