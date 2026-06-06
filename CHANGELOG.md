@@ -17,6 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `llmemos-publish --dry-run` now previews the `/rename` command alongside the git
   operations.
 
+### Notes
+
+- `/rename` injection requires `claude-launcher` **v1.8.0+** to work correctly in
+  auto-restart sessions. Prior versions only preset the gopass decryption keygrip at
+  startup; the git signing keygrip was left uncached, causing pinentry failures when
+  `llmemos-publish` committed in a non-interactive (auto-restarted) session.
+  v1.8.0 presets both keygrips with a single passphrase prompt.
+
 ---
 
 ## [1.1.0] - 2026-05-26
