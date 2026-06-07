@@ -13,3 +13,4 @@ __pycache__
 bin/custom_logger.py
 docs/accelerate/
 .ruff.toml
+docs/vendor-neutrality-sweep/

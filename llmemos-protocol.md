@@ -328,6 +328,64 @@ When a single session covers sufficiently distinct topics, the memo MAY be split
 (e.g., `session-memo-006a-mcp-architecture.md`, `session-memo-006b-process-notes.md`). Each
 sub-file carries its own frontmatter and its own entry in the AGENTS.md index.
 
+### Section-Level Tagging (Optional)
+
+Within a memo body, individual sections MAY carry their own metadata via an HTML
+comment placed immediately after the section header:
+
+```markdown
+## Section Title
+<!-- llmemos-section: tags=[tag1, tag2], sticky=true, created=2026-05-28 -->
+
+Section content here...
+```
+
+The comment is invisible in rendered Markdown and machine-parseable. All fields are
+optional and, when omitted, inherit from the memo level:
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `tags` | list | memo-level `topics` | Topics this section covers |
+| `sticky` | bool | `false` | Always relevant regardless of memo-level stickiness |
+| `created` | date | memo-level `created` | When this section was written or added |
+| `title` | string | *(inferred)* | Explicit display title; if omitted, implementations SHOULD infer one from the nearest preceding Markdown header |
+
+**Section boundaries:** A section spans from its header to the next header at the
+same or higher level; nested subheaders belong to their parent section. Content
+before the first header (the memo preamble) is an implicit, untagged section.
+
+**Section identifiers:** `{memo-id}#{section-slug}`, where `section-slug` is the
+lowercased, whitespace-collapsed, non-alphanumeric-stripped header text (e.g.,
+`session-memo-023#google-api-oauth-pattern`). These IDs support cross-references
+and explicit requests to load a specific section.
+
+**Backward compatibility:** Memos without any section markers are valid and
+unaffected. For purposes of section-aware retrieval, such a memo is treated as a
+single implicit section spanning its entire body — inheriting the memo's `topics`,
+`sticky` flag, and `created` date. This is the preamble rule above, applied
+consistently to the whole-memo case: the convention subsumes non-adoption as a
+degenerate case rather than requiring retrieval logic to special-case it.
+
+**Mixed marked and unmarked headers:** A memo MAY adopt section tagging only
+partially — some headers carry `llmemos-section` markers, others don't. Unmarked
+*interior* headers (i.e., headers other than the implicit preamble) are NOT treated
+as implicit sections: they are invisible to section-granularity retrieval and
+participate only when the whole memo loads. This differs from the preamble rule
+because the two cases aren't symmetric — a preamble structurally cannot carry a
+marker (markers attach to headers; nothing precedes the first one), so defaulting it
+to an inheriting implicit section is the only sensible behavior, whereas an interior
+header *could* have been marked and wasn't. Implementations SHOULD treat that
+omission as the author's deliberate signal that the content isn't independently
+retrieval-worthy, and respect it rather than inventing a synthetic section for it.
+
+This convention is purely declarative — it adds optional metadata that
+implementations MAY use to retrieve and load memo content at finer granularity than
+the whole file. Implementations SHOULD provide an efficient mechanism for loading
+only matching sections where the host environment supports partial-content
+retrieval; implementations MAY fall back to whole-memo loading where it does not.
+Platform-specific mechanics (indexing, targeted reads, etc.) belong in the relevant
+provider directory under `providers/`, not in this core specification.
+
 ---
 
 ## Memo Lifecycle
