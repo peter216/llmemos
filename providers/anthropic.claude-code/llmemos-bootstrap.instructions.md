@@ -5,7 +5,7 @@ applyTo: '**'
 
 # llmemos Bootstrapping Protocol — Claude Code Session Instructions
 
-**Protocol version:** 1.1.0
+**Protocol version:** 1.2.0
 **Implementation path:** Claude Code + local git/gh CLI (Path A)
 
 This instruction activates the llmemos Bootstrapping Protocol. The canonical protocol
@@ -113,6 +113,16 @@ memo files to check sticky status.
 
 Load the tag definitions and alias expansions. Retain these for validation in Step 4.
 
+**Read tool call 3c (optional)** — if `section-index.json` exists at the corpus root,
+read it:
+`/tmp/llmemos-session/section-index.json`
+
+Because the index ships inside the same signed commit as the rest of the corpus, no
+separate currency/staleness check is performed — it is trusted exactly as the rest of
+the corpus content is. If present, use it for section-level loading per "Loading
+granularity" below. If absent, fall back to whole-memo loading (today's behavior) —
+this is graceful degradation, not an error condition.
+
 **Select memos to load** based on the Memo Loading Directive (if present at the end of
 this system prompt). Apply the first matching rule:
 
@@ -128,12 +138,61 @@ this system prompt). Apply the first matching rule:
 Load order: sticky memos first, then selected non-sticky memos, both groups ordered
 chronologically by `created` date.
 
-**Read tool calls 3c+** — read each selected memo file:
+**Loading granularity** — if `section-index.json` was loaded in 3c, resolve the
+*initial bootstrap load's* granularity via `--tag-search <all | sections | memos>`
+(a one-shot directive, consumed here and discarded):
 
-For each selected memo, issue one Read tool call on:
+| `--tag-search` value | Behavior |
+|---|---|
+| `all` (protocol default) | Union of memo-level and section-level matches, deduplicated — a memo already loaded in full is not redundantly re-loaded at section level. On a corpus with no section tagging adopted, this collapses to today's whole-memo behavior (graceful degradation) |
+| `sections` | Load matching content at section granularity wherever the index allows it |
+| `memos` | Load matching content at whole-memo granularity only (today's behavior, regardless of index presence) |
+
+**Distinguishing `--tag-search` from `tag-search-default`:** `--tag-search` is
+consumed once, here, to select the *initial* load's granularity, then discarded. A
+separate, persistent setting — `tag-search-default` — may also be present, supplied
+via the altpath mechanism (the same channel that carries trusted-key overrides and
+taxonomy extensions) and retained in ambient session context for the rest of the
+session. Look for a `tag-search-default: <all|sections|memos>` line under the
+"Loading Granularity Default" heading near the end of this file — read it during
+bootstrap alongside the static memo-loading directive footer, and retain its value
+for the rest of the session. Unlike `--tag-search`, it remains available to inform
+*any* loading decision the agent makes on its own initiative after bootstrap
+completes — see "Mid-Session Memo Loading" below for how it governs agent-initiated
+loads. The altpath mechanism is the right carrier for it precisely because it is
+read once at session start and folded into ambient context, rather than consumed
+and discarded like a CLI argument.
+
+For each memo in the selection set, apply this loading logic (uniform — every indexed
+memo has at least one section entry by construction, so there is no "memo has no
+sections" special case to handle):
+
+1. **Sticky memo** → load the whole memo in one Read call (a read-efficiency
+   optimization: a sticky memo's sections collectively span its entire body, so
+   reading them individually would cost more round-trips than reading the file once)
+2. **Non-sticky memo**, when operating at section granularity:
+   - Load sections where `sticky=true` unconditionally
+   - Load sections whose `tags` intersect the active loading directive — for an
+     untagged memo this naturally means loading its single synthetic section (whose
+     `tags` are the memo's `topics`), reproducing today's whole-memo behavior exactly
+   - Skip sections with no matching tags and `sticky=false`
+
+When loading a section rather than a whole memo, read the memo file and request only
+the lines spanning the index's `start_line`/`end_line` for that section — these align
+directly with a targeted Read call's `offset`/`limit` parameters, so no re-parsing of
+the memo file is needed. Include the section header in the read range.
+
+**Read tool calls 3d+** — read each selected memo or section:
+
+For each selected memo (whole-memo path) or section (section-granularity path), issue
+one Read tool call on:
 `/tmp/llmemos-session/<file-path-from-index>`
+— passing `offset`/`limit` derived from the index's `start_line`/`end_line` for
+section-level reads.
 
-Note the total count of loaded memos and total available memos from the index.
+Note the total count of loaded memos/sections, the total available memos from the
+index, and which granularity was actually used — all three are needed for the
+session-start log line in Step 5.
 
 ### Step 4 — Validate
 
@@ -152,18 +211,31 @@ Also warn (do not abort) if any loaded memo's `topics` contain tags not defined 
 ### Step 5 — Emit the session start log line (FIRST visible output)
 
 ```
-[MEMO PROTOCOL: ACTIVE | repo: github.com/<your-username>/<your-corpus-repo> | branch: main | commit: <hash> | memos: <N loaded> of <M total> | validation: PASS]
+[MEMO PROTOCOL: ACTIVE | repo: github.com/<your-username>/<your-corpus-repo> | branch: main | commit: <hash> | memos: <N loaded> of <M total> | granularity: <whole-memo|sections|mixed> | validation: PASS]
 ```
 
 or on validation failure:
 ```
-[MEMO PROTOCOL: ACTIVE | repo: ... | commit: <hash> | memos: <N loaded> of <M total> | validation: FAIL | reason: <reason>]
+[MEMO PROTOCOL: ACTIVE | repo: ... | commit: <hash> | memos: <N loaded> of <M total> | granularity: <whole-memo|sections|mixed> | validation: FAIL | reason: <reason>]
 ```
 
 or on retrieval error:
 ```
 [MEMO PROTOCOL: ERROR | reason: <reason>]
 ```
+
+**`granularity` field values:**
+
+| Value | When to use |
+|---|---|
+| `whole-memo` | No `section-index.json` was present (graceful degradation), or every loaded memo was loaded in full (e.g. all selections were sticky, or `--tag-search memos` was in effect) |
+| `sections` | At least one memo was loaded at section granularity and none were loaded as a whole-memo *match* (sticky whole-memo loads don't count against this — they're the read-efficiency optimization, not a granularity choice) |
+| `mixed` | The selection set combined whole-memo loads (sticky memos, or non-sticky memos matched as a whole under `--tag-search all`'s union/dedup) with section-level loads of other memos |
+
+> **Sync note:** This field is new in protocol v1.2.0 and not yet reflected in the
+> canonical `llmemos-protocol.md` Step 5 template — that file's matching template
+> needs a corresponding update to satisfy the "Session log format — Must match"
+> sync-table requirement. Flagged here as a known follow-up, not yet applied.
 
 ---
 
@@ -190,6 +262,24 @@ Step 3 — no re-cloning or re-verification needed.
    `/tmp/llmemos-session/<file-path-from-index>`
 3. Incorporate content into session context
 4. Confirm: "Loaded: [memo title(s)]" — or note if the requested memo was already in context
+
+**Loading granularity for agent-initiated loads**
+
+> When an agent independently decides to load additional memo content mid-session
+> (i.e., not in direct response to an explicit user directive specifying
+> granularity), it SHOULD honor the session's configured `tag-search` preference.
+> If the agent judges that an alternate granularity better serves the immediate
+> need — e.g., pulling a whole memo despite a `sections` preference because the
+> surrounding context made the full memo clearly relevant, or vice versa — it MAY
+> do so without seeking permission first. However, it MUST note the deviation to
+> the user afterward (e.g., "loaded memo-030 in full rather than just the tagged
+> section, because X"), so the user can decide whether their configured default
+> should change based on the pattern the agent is observing.
+
+This mirrors the protocol's existing "warn but don't abort" posture (cf. the
+taxonomy-tag-mismatch check in Step 4 validation): trust the agent's in-the-moment
+judgment, but surface deviations transparently so the human stays in the loop on
+tuning their own defaults.
 
 Do not re-read AGENTS.md or taxonomy.yml — they are already in context from Step 3.
 
@@ -241,3 +331,20 @@ e.g.: "--alias protocol" or "--tags finance" or "--all"
 # --alias protocol
 # --sticky (loads only sticky memos — the minimal default)
 --sticky
+
+---
+
+## Loading Granularity Default (tag-search-default)
+
+This is the persistent session-level preference for loading granularity, carried
+via the altpath mechanism — read once at bootstrap (Step 3) and retained in
+ambient session context for the rest of the session. It governs granularity for
+*agent-initiated* mid-session loads (see "Loading granularity for agent-initiated
+loads" under Mid-Session Memo Loading) and, when no `--tag-search` directive is
+supplied for the initial bootstrap, also serves as that load's granularity.
+
+Distinct from `--tag-search`: that flag is one-shot (consumed at Step 3, governs
+only the initial load); this setting persists for the whole session.
+
+# Replace with your preferred default granularity: all | sections | memos
+tag-search-default: all
