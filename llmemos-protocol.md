@@ -136,10 +136,21 @@ MUST emit a single-line status log before any other response. The log state MUST
 following:
 
 ```
-[MEMO PROTOCOL: ACTIVE | repo: <repo> | branch: <branch> | commit: <short hash> | memos: <count> | validation: PASS]
-[MEMO PROTOCOL: ACTIVE | repo: <repo> | branch: <branch> | commit: <short hash> | memos: <count> | validation: FAIL | reason: <reason>]
+[MEMO PROTOCOL: ACTIVE | repo: <repo> | branch: <branch> | commit: <short hash> | memos: <count> | granularity: <whole-memo|sections|mixed> | validation: PASS]
+[MEMO PROTOCOL: ACTIVE | repo: <repo> | branch: <branch> | commit: <short hash> | memos: <count> | granularity: <whole-memo|sections|mixed> | validation: FAIL | reason: <reason>]
 [MEMO PROTOCOL: ERROR | reason: <reason>]
 ```
+
+The `granularity` field reflects the loading granularity actually used for the session's
+initial bootstrap load:
+
+- `whole-memo` — no `section-index.json` was present (graceful degradation), or all
+  loaded content was read at whole-memo granularity (e.g. all selections were sticky,
+  or `--tag-search memos` was in effect)
+- `sections` — at least one memo was loaded at section granularity and none were loaded
+  as whole-memo matches (sticky whole-memo loads are a read-efficiency optimization, not
+  a granularity choice, and do not count against this value)
+- `mixed` — the selection set combined whole-memo loads with section-level loads
 
 Absence of a log line means the bootstrap instruction was never delivered to the agent — the
 protocol is off at the instruction level, not merely at the tool level. Each state has a distinct
