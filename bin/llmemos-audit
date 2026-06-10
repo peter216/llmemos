@@ -1,0 +1,500 @@
+#!/usr/bin/env python3
+"""llmemos-audit — corpus health auditor for the llmemos episodic-memory protocol.
+
+Implements docs/accelerate/IMPLEMENTATION.md Feature 2 (v0.1.0): three reports
+sharing one corpus scan —
+
+  --report sections   Generate the committed section index (section-index.json),
+                      the artifact Feature 4's loading logic and Reports B/C
+                      consume. See llmemos-protocol.md, "Section-Level Tagging".
+  --report decay      Sticky Age Report — flags sticky memos due/overdue for
+                      human renewal review (Feature 3).
+  --report tokens     Token Budget Report — approximates load cost for a
+                      simulated --tags directive, reading token_estimate
+                      straight from the section index so the report and the
+                      index agree by construction (chars/4 heuristic).
+  --report all        Run all three (default).
+
+Usage:
+  llmemos-audit [--report sections|decay|tokens|all] [--repo-path PATH]
+                [--output-dir DIR] [--tags TAG[,TAG...]]
+
+Corpus root resolution (matches llmemos-publish / count-alias-usage.py):
+  1. --repo-path argument
+  2. MEMO_REPO_PATH environment variable
+  3. Walk upward from cwd until a directory containing AGENTS.md and memos/ is found
+
+Optional env vars:
+  DEBUG=1   Enable debug logging.
+"""
+
+import argparse
+import json
+import logging
+import os
+import re
+import subprocess
+import sys
+from datetime import date, datetime, timezone
+from pathlib import Path
+
+import yaml
+
+try:
+    from llmemos_logger import get_logger  # optional: colored output + NOTICE/SUCCESS levels
+    _HAVE_COLOR_LOGGER = True
+except ImportError:
+    _HAVE_COLOR_LOGGER = False
+
+FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
+HEADER_RE = re.compile(r"^(#{2,6})\s+(.+?)\s*$")
+SECTION_MARKER_RE = re.compile(r"<!--\s*llmemos-section:\s*(.*?)\s*-->")
+ATTR_RE = re.compile(r'(\w+)=(\[[^\]]*\]|"[^"]*"|\S+?)(?:,|$)')
+
+CHARS_PER_TOKEN = 4
+DEFAULT_RENEWAL_CADENCE_YEARS = 1
+DECAY_WARN_WINDOW_DAYS = 30
+
+
+def get_logger_compat(debug: bool) -> logging.Logger:
+    """Use the project's colored logger if available; fall back to stdlib."""
+    level = logging.DEBUG if debug else logging.INFO
+    if _HAVE_COLOR_LOGGER:
+        return get_logger(__name__, level=level)
+    logging.basicConfig(level=level, format="%(levelname)s: %(message)s")
+    return logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Corpus root resolution & AGENTS.md
+# ---------------------------------------------------------------------------
+
+def find_repo_root(repo_path_arg: str | None) -> Path:
+    """Resolve the corpus root: --repo-path, then MEMO_REPO_PATH, then walk up.
+
+    Mirrors the resolution order documented for llmemos-publish so all corpus
+    tooling agrees on "where am I" without separate configuration.
+    """
+    if repo_path_arg:
+        return Path(repo_path_arg).resolve()
+
+    env_path = os.environ.get("MEMO_REPO_PATH")
+    if env_path:
+        return Path(env_path).resolve()
+
+    current = Path.cwd().resolve()
+    while current != current.parent:
+        if (current / "AGENTS.md").exists() and (current / "memos").is_dir():
+            return current
+        current = current.parent
+    sys.exit(
+        "Cannot find corpus root (AGENTS.md + memos/).\n"
+        "Set MEMO_REPO_PATH, run from inside your corpus repo, or use --repo-path."
+    )
+
+
+def load_agents_md(repo_path: Path) -> tuple[dict, dict]:
+    """Return (frontmatter, {memo_id: entry}) parsed from AGENTS.md."""
+    agents_text = (repo_path / "AGENTS.md").read_text()
+    fm_match = FRONTMATTER_RE.match(agents_text)
+    frontmatter = yaml.safe_load(fm_match.group(1)) if fm_match else {}
+
+    block_match = re.search(r"```yaml\n(memos:.*?)\n```", agents_text, re.DOTALL)
+    if not block_match:
+        sys.exit("Could not find the `memos:` YAML block in AGENTS.md")
+    parsed = yaml.safe_load(block_match.group(1))
+    return frontmatter, {entry["id"]: entry for entry in parsed["memos"]}
+
+
+def corpus_commit(repo_path: Path) -> str:
+    """Short hash of HEAD — stamped into the index so staleness is checkable
+    (e.g. `jq .corpus_commit section-index.json` vs `git rev-parse --short HEAD`)."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(repo_path), "rev-parse", "--short", "HEAD"],
+            capture_output=True, text=True, check=True,
+        )
+        return result.stdout.strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return "unknown"
+
+
+# ---------------------------------------------------------------------------
+# Section parsing (Report A core — Feature 1 / Feature 2 Report A schema)
+# ---------------------------------------------------------------------------
+
+def parse_attrs(raw: str) -> dict:
+    """Parse the comma-separated key=value attributes inside a section marker."""
+    attrs = {}
+    for key, raw_value in ATTR_RE.findall(raw):
+        value = raw_value.strip().rstrip(",")
+        if value.startswith("[") and value.endswith("]"):
+            attrs[key] = [v.strip() for v in value[1:-1].split(",") if v.strip()]
+        elif value.startswith('"') and value.endswith('"'):
+            attrs[key] = value[1:-1]
+        elif value in ("true", "false"):
+            attrs[key] = value == "true"
+        else:
+            attrs[key] = value
+    return attrs
+
+
+def slugify(title: str) -> str:
+    """Lowercase, whitespace-collapsed, non-alphanumeric-stripped header text."""
+    slug = re.sub(r"[^a-z0-9\s-]", "", title.lower())
+    return re.sub(r"[\s-]+", "-", slug).strip("-")
+
+
+def token_estimate(text: str) -> int:
+    """Rough chars/4 heuristic — see IMPLEMENTATION.md Report C. Sourced here so
+    Report A's index and Report C's budget agree by construction."""
+    return max(1, round(len(text) / CHARS_PER_TOKEN))
+
+
+def find_headers(lines: list[str]) -> list[tuple[int, int, str, dict | None]]:
+    """Return (body_line_index, level, title_text, marker_attrs_or_None) per header.
+
+    A marker is associated with a header when it appears on the next non-blank
+    line immediately following that header.
+    """
+    headers = []
+    for i, line in enumerate(lines):
+        header_match = HEADER_RE.match(line)
+        if not header_match:
+            continue
+        level = len(header_match.group(1))
+        title_text = header_match.group(2)
+        marker_attrs = None
+        for j in range(i + 1, min(i + 3, len(lines))):
+            if not lines[j].strip():
+                continue
+            marker_match = SECTION_MARKER_RE.search(lines[j])
+            if marker_match:
+                marker_attrs = parse_attrs(marker_match.group(1))
+            break
+        headers.append((i, level, title_text, marker_attrs))
+    return headers
+
+
+def section_end(headers: list[tuple], line_no: int, level: int) -> int | None:
+    """Body-line index (exclusive) where a section starting at line_no/level ends —
+    i.e. the next header at an equal-or-shallower level, marked or not."""
+    for nxt_line_no, nxt_level, _, _ in headers:
+        if nxt_line_no > line_no and nxt_level <= level:
+            return nxt_line_no
+    return None  # caller substitutes len(lines)
+
+
+def parse_memo(memo_path: Path, agents_entry: dict) -> dict:
+    """Parse one memo file into its memo-grouped section-index entry.
+
+    Three shapes, per llmemos-protocol.md "Section-Level Tagging":
+      - Every header carries a marker -> one entry per marked header.
+      - No headers carry markers -> single synthetic title_source="whole-memo"
+        section (the indexer's materialization of "Backward compatibility").
+      - A mix of marked and unmarked headers -> only marked headers become
+        section entries; unmarked interior headers are NOT materialized as
+        implicit sections (see "Mixed marked and unmarked headers" — the
+        author's choice not to mark them is treated as deliberate, and that
+        content surfaces only via whole-memo loads, not section-mode matching).
+    The preamble (content before the first header) is never independently
+    materialized either way — it has no marker mechanism available to it, and
+    is implicitly covered whenever the memo's sections or whole body load.
+    """
+    text = memo_path.read_text()
+    fm_match = FRONTMATTER_RE.match(text)
+    frontmatter = yaml.safe_load(fm_match.group(1)) if fm_match else {}
+    body = text[fm_match.end():] if fm_match else text
+    body_start_line = text[: fm_match.end()].count("\n") if fm_match else 0
+
+    lines = body.splitlines()
+    headers = find_headers(lines)
+    marked_headers = [h for h in headers if h[3] is not None]
+
+    memo_id = frontmatter.get("id", agents_entry["id"])
+    memo_sticky = bool(agents_entry.get("sticky", False))
+    memo_topics = frontmatter.get("topics", agents_entry.get("topics", []))
+    memo_created = str(frontmatter.get("created", agents_entry.get("created", "")))[:10]
+
+    sections = []
+    if marked_headers:
+        for line_no, level, title_text, attrs in marked_headers:
+            end_line_no = section_end(headers, line_no, level)
+            if end_line_no is None:
+                end_line_no = len(lines)
+            section_text = "\n".join(lines[line_no:end_line_no])
+            sections.append({
+                "section_id": f"{memo_id}#{slugify(title_text)}",
+                "title": attrs.get("title", title_text),
+                "title_source": "annotation" if "title" in attrs else "header",
+                "level": level,
+                "tags": attrs.get("tags", memo_topics),
+                "sticky": bool(attrs.get("sticky", False)),
+                "created": attrs.get("created", memo_created),
+                "start_line": body_start_line + line_no + 1,
+                "end_line": body_start_line + end_line_no,
+                "token_estimate": token_estimate(section_text),
+            })
+    else:
+        # No explicit markers anywhere -> synthetic whole-memo section
+        # (Feature 1, "Backward compatibility": untagged memos are a single
+        # implicit section spanning the whole body, not a special case).
+        # Anchor on the first non-blank body line (the memo's `#` title for any
+        # well-formed memo) rather than body-line 0 — a blank line commonly
+        # separates the frontmatter's closing `---` from the title, and starting
+        # there would point start_line at whitespace instead of content.
+        first_content = next((i for i, l in enumerate(lines) if l.strip()), 0)
+        sections.append({
+            "section_id": memo_id,
+            "title": agents_entry.get("title", memo_id),
+            "title_source": "whole-memo",
+            "level": 0,
+            "tags": memo_topics,
+            "sticky": memo_sticky,
+            "created": memo_created,
+            "start_line": body_start_line + first_content + 1,
+            "end_line": body_start_line + len(lines),
+            "token_estimate": token_estimate(body),
+        })
+
+    return {
+        "id": memo_id,
+        "file": agents_entry["file"],
+        "sticky": memo_sticky,
+        "token_estimate": token_estimate(text),
+        "sections": sections,
+    }
+
+
+def build_section_index(repo_path: Path, agents_index: dict, logger: logging.Logger) -> dict:
+    """Build the full {generated, corpus_commit, memos: [...]} index document.
+
+    A memo file listed in AGENTS.md but missing on disk (e.g. a sparse/partial
+    corpus clone that didn't fetch archive/) is a corpus-hygiene problem worth
+    surfacing — exactly what an *audit* tool is for — so it's logged as a
+    warning and skipped rather than crashing the whole run.
+    """
+    memos = []
+    for entry in agents_index.values():
+        memo_path = repo_path / entry["file"]
+        if not memo_path.exists():
+            logger.warning(f"AGENTS.md references missing file: {entry['file']} (id={entry['id']}) — skipping")
+            continue
+        try:
+            memos.append(parse_memo(memo_path, entry))
+        except yaml.YAMLError as exc:
+            # Malformed frontmatter (e.g. an unquoted value containing ":") is a
+            # corpus-hygiene defect this tool should *report*, not die on — one
+            # bad memo shouldn't block indexing the rest of the corpus.
+            logger.warning(f"Malformed frontmatter in {entry['file']} (id={entry['id']}): {exc} — skipping")
+            continue
+    return {
+        "generated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "corpus_commit": corpus_commit(repo_path),
+        "memos": memos,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Report A: Section Index
+# ---------------------------------------------------------------------------
+
+def run_report_sections(repo_path: Path, output_dir: Path | None, logger: logging.Logger) -> dict:
+    """Generate and write section-index.json; return the index for reuse by
+    Report C in --report all (so the corpus is only scanned once)."""
+    index = build_section_index(repo_path, load_agents_md(repo_path)[1], logger)
+    dest_dir = output_dir if output_dir else repo_path
+    dest_path = dest_dir / "section-index.json"
+    dest_path.write_text(json.dumps(index, indent=2) + "\n")
+
+    memo_count = len(index["memos"])
+    section_count = sum(len(m["sections"]) for m in index["memos"])
+    logger.info(
+        f"Wrote {dest_path} — {memo_count} memos, {section_count} sections "
+        f"(corpus_commit={index['corpus_commit']})"
+    )
+    return index
+
+
+# ---------------------------------------------------------------------------
+# Report B: Sticky Age Report
+# ---------------------------------------------------------------------------
+
+def parse_iso_date(value) -> date | None:
+    """Parse a YAML date/string into a date, tolerating both native and string forms."""
+    if value is None:
+        return None
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    if isinstance(value, datetime):
+        return value.date()
+    try:
+        return datetime.strptime(str(value)[:10], "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def run_report_decay(agents_index: dict, frontmatter: dict, logger: logging.Logger) -> int:
+    """Print the Sticky Age Report (Feature 3); return an exit-code contribution
+    (1 if any sticky memo is overdue or missing required fields, else 0)."""
+    cadence_years = frontmatter.get(
+        "sticky-renewal-cadence-years", DEFAULT_RENEWAL_CADENCE_YEARS
+    )
+    today = date.today()
+    sticky_entries = [e for e in agents_index.values() if e.get("sticky")]
+
+    print(f"📋 Sticky Age Report — {today.isoformat()}")
+    print()
+
+    has_problem = False
+    for entry in sorted(sticky_entries, key=lambda e: e["id"]):
+        memo_id = entry["id"]
+        since = parse_iso_date(entry.get("sticky-since"))
+        review_after = parse_iso_date(entry.get("sticky-review-after"))
+
+        if since is None:
+            print(f"🔴  {memo_id:<20} sticky-since field missing — add it")
+            has_problem = True
+            continue
+
+        if review_after is None:
+            try:
+                review_after = since.replace(year=since.year + cadence_years)
+            except ValueError:  # Feb 29 on a non-leap target year
+                review_after = since.replace(month=2, day=28, year=since.year + cadence_years)
+
+        age_days = (today - since).days
+        days_to_review = (review_after - today).days
+
+        if days_to_review < 0:
+            icon = "🔴 "
+            has_problem = True
+            status = f"OVERDUE since {review_after.isoformat()} ({-days_to_review} days ago)"
+        elif days_to_review <= DECAY_WARN_WINDOW_DAYS:
+            icon = "⚠️ "
+            status = f"review in {days_to_review} days"
+        else:
+            icon = "✅ "
+            status = f"review in {days_to_review} days"
+
+        print(
+            f"{icon} {memo_id:<20} sticky since {since.isoformat()}   "
+            f"({age_days} days)    {status}"
+        )
+
+    if not sticky_entries:
+        print("(no memos are currently marked sticky)")
+
+    return 1 if has_problem else 0
+
+
+# ---------------------------------------------------------------------------
+# Report C: Token Budget
+# ---------------------------------------------------------------------------
+
+def run_report_tokens(index: dict, agents_index: dict, tags: list[str], logger: logging.Logger) -> None:
+    """Print the Token Budget Report for a simulated --tags directive, reading
+    token_estimate straight from the section index (Report A) — never
+    recomputed — so the figures agree with the index by construction."""
+    tag_set = set(tags)
+    directive = f"--tags {','.join(tags)}" if tags else "(none — whole-corpus totals)"
+
+    print("📊 Bootstrap Token Budget")
+    print()
+    print(f"Directive: {directive} (simulated)")
+    print()
+
+    sticky_total = 0
+    matched_total = 0
+
+    sticky_memos = [m for m in index["memos"] if m["sticky"]]
+    if sticky_memos:
+        print("Sticky memos:")
+        for memo in sorted(sticky_memos, key=lambda m: m["id"]):
+            print(f"  {memo['id']:<20} {memo['token_estimate']:>6,} tokens  (sticky, whole memo)")
+            sticky_total += memo["token_estimate"]
+        print()
+
+    if tag_set:
+        matches = []
+        for memo in index["memos"]:
+            if memo["sticky"]:
+                continue  # already counted at whole-memo granularity above
+            for section in memo["sections"]:
+                if tag_set & set(section["tags"]):
+                    matches.append(section)
+
+        label = "/".join(sorted(tag_set))
+        print(f"Sections matching tag '{label}' in non-sticky memos:")
+        if matches:
+            id_width = max(len(section["section_id"]) for section in matches)
+            for section in matches:
+                print(f"  {section['section_id']:<{id_width}}  {section['token_estimate']:>5,} tokens")
+                matched_total += section["token_estimate"]
+        else:
+            print("  (no matching sections)")
+        print()
+
+    separator = "─" * 50
+    print(separator)
+    print(f"  Sticky memos total:   {sticky_total:>6,} tokens")
+    if tag_set:
+        print(f"  Matched sections:     {matched_total:>6,} tokens")
+    print(f"  Grand total:          {sticky_total + matched_total:>6,} tokens")
+
+
+# ---------------------------------------------------------------------------
+# main
+# ---------------------------------------------------------------------------
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Corpus health auditor for the llmemos episodic-memory protocol",
+    )
+    parser.add_argument(
+        "--report", choices=["sections", "decay", "tokens", "all"], default="all",
+        help="Which report to run (default: all)",
+    )
+    parser.add_argument("--repo-path", help="Path to the memo corpus (overrides MEMO_REPO_PATH)")
+    parser.add_argument(
+        "--output-dir",
+        help="Directory to write generated artifacts (e.g. section-index.json). "
+             "Default: corpus root.",
+    )
+    parser.add_argument(
+        "--tags", default="",
+        help="Comma-separated tags to simulate a --tag-search directive for "
+             "the token-budget report (--report tokens / all).",
+    )
+    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
+    args = parser.parse_args()
+
+    logger = get_logger_compat(args.debug or bool(os.environ.get("DEBUG")))
+
+    repo_path = find_repo_root(args.repo_path)
+    output_dir = Path(args.output_dir).resolve() if args.output_dir else None
+    tags = [t.strip() for t in args.tags.split(",") if t.strip()]
+
+    frontmatter, agents_index = load_agents_md(repo_path)
+
+    exit_code = 0
+    run_sections = args.report in ("sections", "tokens", "all")
+    index = None
+    if run_sections:
+        index = run_report_sections(repo_path, output_dir, logger)
+        if args.report != "sections":
+            print()
+
+    if args.report in ("decay", "all"):
+        exit_code = max(exit_code, run_report_decay(agents_index, frontmatter, logger))
+        if args.report == "all":
+            print()
+
+    if args.report in ("tokens", "all"):
+        run_report_tokens(index, agents_index, tags, logger)
+
+    sys.exit(exit_code)
+
+
+if __name__ == "__main__":
+    main()

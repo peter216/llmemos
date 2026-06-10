@@ -1,7 +1,7 @@
 #!/bin/bash
 ##
 ## llmemos — Claude Code launcher with llmemos bootstrapping protocol
-## Version: 1.1.0
+## Version: 1.2.0
 ##
 ## Starts a Claude Code session with the llmemos bootstrapping protocol
 ## injected as a system prompt, enabling automatic episodic memory loading.
@@ -155,6 +155,21 @@ if [[ -n "${MEMO_DIRECTIVE}" ]]; then
 
 When selecting memos in Step 3, apply this flag: ${MEMO_DIRECTIVE}"
 fi
+
+## Append sticky review check directive (Feature 3 decay warning)
+system_prompt="${system_prompt}
+
+## Sticky Review Check
+
+Immediately after emitting the [MEMO PROTOCOL: ACTIVE...] session-start log line in
+Step 5, run \`llmemos-audit --report decay\` against the cloned corpus. For each
+sticky memo it flags with ⚠️ (review due within 30 days) or 🔴 (overdue), emit a
+warning line directly beneath the protocol log line in this format:
+
+⚠ Sticky review due: <id> (<sticky-review-after date>, <N> days away) — run: llmemos-audit --report decay
+🔴 Sticky review overdue: <id> (was <sticky-review-after date>, <N> days ago) — run: llmemos-audit --report decay
+
+If the report shows no ⚠️/🔴 sticky entries (or the audit tool is unavailable), emit nothing."
 
 system_prompt="${system_prompt}
 
