@@ -1,7 +1,7 @@
 #!/bin/bash
 ##
 ## llmemos — Claude Code launcher with llmemos bootstrapping protocol
-## Version: 1.2.0
+## Version: 1.3.0
 ##
 ## Starts a Claude Code session with the llmemos bootstrapping protocol
 ## injected as a system prompt, enabling automatic episodic memory loading.
@@ -19,6 +19,18 @@
 ##   --all                Load sticky memos + all non-sticky memos
 ##   --memos <ids>        Load sticky memos + explicitly listed memo ids (e.g. 007,008,009)
 ##   --list               Print the taxonomy cheatsheet and exit (no Claude invocation)
+##
+## Loading granularity (optional; combinable with any memo option above, or standalone):
+##   --tag-search <all|sections|memos>
+##                        One-shot override for the initial bootstrap load's granularity
+##                        (consumed at Step 3, then discarded). 'all' is the protocol default
+##                        (union of memo- and section-level matches, deduped). 'sections' loads
+##                        matching content at section granularity where the index allows it.
+##                        'memos' forces whole-memo loading regardless of section-index.json.
+##                        Given alone (no other memo option), implies sticky-memos-only
+##                        selection at the requested granularity. Does not affect the
+##                        persistent tag-search-default used for agent-initiated mid-session
+##                        loads (set via the .altpath bootstrap file).
 ##
 ## With no memo flag, only sticky memos are loaded (plus any platform_defaults in taxonomy.yml).
 ##
@@ -47,6 +59,7 @@ MEMO_REPO_PATH="${MEMO_REPO_PATH:-${DEFAULT_MEMO_REPO_PATH}}"
 LLMEMOS_LOG="${LLMEMOS_LOG:-${DEFAULT_LLMEMOS_LOG}}"
 DRY_RUN="${DRYRUN:-0}"
 MEMO_DIRECTIVE=""
+TAG_SEARCH_DIRECTIVE=""
 LIST_MODE=0
 
 usage() {
@@ -99,6 +112,18 @@ while [[ $# -gt 0 ]]; do
             MEMO_DIRECTIVE="--memos $2"
             shift 2
             ;;
+        --tag-search)
+            case "${2:-}" in
+                all|sections|memos)
+                    ;;
+                *)
+                    echo "claude-memos: --tag-search requires one of: all, sections, memos" >&2
+                    exit 1
+                    ;;
+            esac
+            TAG_SEARCH_DIRECTIVE="--tag-search $2"
+            shift 2
+            ;;
         --list)
             LIST_MODE=1
             shift
@@ -147,13 +172,26 @@ fi
 
 system_prompt="${system_prompt}$(cat "${BOOTSTRAP_FILE}")"
 
-## Append memo loading directive if a flag was specified
+## Append memo loading directive if a selection and/or granularity flag was specified.
+## Selection (which memos) and granularity (--tag-search, whole-memo vs. section-level)
+## are independent axes — both may be present in the same directive block.
+directive_flags=""
 if [[ -n "${MEMO_DIRECTIVE}" ]]; then
+    directive_flags="${MEMO_DIRECTIVE}"
+fi
+if [[ -n "${TAG_SEARCH_DIRECTIVE}" ]]; then
+    if [[ -n "${directive_flags}" ]]; then
+        directive_flags="${directive_flags} ${TAG_SEARCH_DIRECTIVE}"
+    else
+        directive_flags="${TAG_SEARCH_DIRECTIVE}"
+    fi
+fi
+if [[ -n "${directive_flags}" ]]; then
     system_prompt="${system_prompt}
 
 ## Memo Loading Directive
 
-When selecting memos in Step 3, apply this flag: ${MEMO_DIRECTIVE}"
+When selecting memos in Step 3, apply these flags: ${directive_flags}"
 fi
 
 ## Append sticky review check directive (Feature 3 decay warning)
@@ -185,14 +223,17 @@ if [[ "${DRY_RUN}" -ne 0 ]]; then
     exit 0
 fi
 
-## Log directive invocation before launching
+## Log directive invocation(s) before launching
 ## Format: <timestamp>\t<source>\t<type>\t<value>\t<uuid>
 ## Other launchers may append to the same log using the same format.
-if [[ -n "${MEMO_DIRECTIVE}" ]]; then
-    mkdir -p "$(dirname "${LLMEMOS_LOG}")"
+## Selection and granularity directives are logged as separate lines (each is
+## independently a well-formed "--flag value" pair; a combined string is not).
+log_directive() {
+    local directive="$1"
+    local directive_type="${directive%% *}"   # e.g. "--alias" or "--tag-search"
+    local directive_value="${directive#* }"   # e.g. "quality" or "sections"
+    local launch_id
     launch_id="$(uuidgen 2>/dev/null | tr '[:upper:]' '[:lower:]' || printf '%s-%s' "$(date +%s)" "$$")"
-    directive_type="${MEMO_DIRECTIVE%% *}"   # e.g. "--alias"
-    directive_value="${MEMO_DIRECTIVE#* }"   # e.g. "quality"
     printf '%s\t%s\t%s\t%s\t%s\n' \
         "$(date -Iseconds)" \
         "llmemos" \
@@ -200,6 +241,12 @@ if [[ -n "${MEMO_DIRECTIVE}" ]]; then
         "${directive_value}" \
         "${launch_id}" \
         >> "${LLMEMOS_LOG}"
+}
+
+if [[ -n "${MEMO_DIRECTIVE}" || -n "${TAG_SEARCH_DIRECTIVE}" ]]; then
+    mkdir -p "$(dirname "${LLMEMOS_LOG}")"
+    [[ -n "${MEMO_DIRECTIVE}" ]] && log_directive "${MEMO_DIRECTIVE}"
+    [[ -n "${TAG_SEARCH_DIRECTIVE}" ]] && log_directive "${TAG_SEARCH_DIRECTIVE}"
 fi
 
 exec claude --system-prompt "${system_prompt}" "Hello Claude"
