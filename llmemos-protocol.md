@@ -1,6 +1,6 @@
 ---
 protocol: llmemos-bootstrapping
-version: "1.1.0"
+version: "1.3.0"
 canonical-repo: github.com/<your-username>/<your-corpus-repo>
 canonical-branch: main
 canonical-google-drive-folder: llmemos
@@ -21,7 +21,7 @@ trusted-infrastructure-signing-keys:
 
 # llmemos Bootstrapping Protocol
 
-Version: 1.1.0
+Version: 1.3.0
 
 This file documents the bootstrapping protocol for the llmemos project. It should be kept in sync with the implementation files listed in the sync table below.
 
@@ -397,6 +397,15 @@ retrieval; implementations MAY fall back to whole-memo loading where it does not
 Platform-specific mechanics (indexing, targeted reads, etc.) belong in the relevant
 provider directory under `providers/`, not in this core specification.
 
+**Sticky sections apply corpus-wide.** A section's `sticky: true` flag is a standalone
+signal, independent of the memo-level `sticky` flag and independent of whether the
+memo's `topics` match the active loading directive. Implementations that use
+`section-index.json` for selection MUST ensure every section marked `sticky: true`
+across the *entire* corpus is loaded, including sections belonging to memos that the
+directive-based selection would not otherwise have selected. A memo MAY therefore
+enter the load set solely because one of its sections is sticky, even though the memo
+itself is non-sticky and untagged for the active directive.
+
 ---
 
 ## Memo Lifecycle
@@ -486,15 +495,24 @@ When evaluating the checked commits for historical coherence, apply the followin
 order to each commit:
 
 1. **Personal trusted key signature, valid** → score contribution: 0 (clean)
-2. **Infrastructure key signature** (key ID listed in `trusted-infrastructure-signing-keys`),
-   AND the commit's immediate parent is signed by a personal trusted key → score contribution: 0 (clean)
-   - Rationale: the merge was an authenticated act of the account owner; the content integrity
-     is guaranteed by the parent's personal signature. Infrastructure keys are accepted as
-     delegation, not as a weakening of the trust model.
-3. **Infrastructure key signature** but parent content commit is NOT signed by a personal
-   trusted key → score contribution: 2 (flag to user)
-4. **Unknown key** (not in either trusted list) → score contribution: 2 (flag to user)
-5. **No signature** → score contribution: 3 (abort)
+2. **Infrastructure key signature** (key ID listed in `trusted-infrastructure-signing-keys`)
+   → walk the first-parent chain starting from this commit, up to 10 hops total (including
+   this commit), looking for the first commit that is either personally signed or not
+   infrastructure-signed:
+   - If that commit carries a **personal trusted key** signature → score contribution: 0
+     (clean). Rationale: the merge (and any consecutive infrastructure-signed
+     merges/squashes above it — e.g. a run of repeated squash-merges) was an authenticated
+     act of the account owner; content integrity is guaranteed by that personal signature.
+     Infrastructure keys are accepted as delegation through any number of consecutive
+     infrastructure-signed commits, not as a weakening of the trust model.
+   - If that commit is **unsigned** → score contribution: 3 (abort), per rule 4 below
+   - If that commit carries an **unknown key** → score contribution: 2 (flag to user), per
+     rule 3 below
+   - If the 10-hop bound is exhausted without finding a non-infrastructure-signed commit →
+     score contribution: 2 (flag to user); the agent MAY widen the inspection window via
+     `git fetch --deepen=N` and retry before falling back to this score
+3. **Unknown key** (not in either trusted list) → score contribution: 2 (flag to user)
+4. **No signature** → score contribution: 3 (abort)
 
 Infrastructure key identification: if `git log --show-signature` reports "Can't check
 signature: No public key", extract the key ID via `git log --format="%GK" -1 <sha>` and
