@@ -15,9 +15,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Section-index-hook changelog entry + --tag-search docs (#6)
 - Fix corpus-wide sticky-section sweep and bound signature walk-back to 10 hops (#7)
 
-
-## [Unreleased]
-
 ### Added
 
 - `llmemos-section-index-hook` (chezmoi-managed, deployed to `~/bin/`) — a pre-push
