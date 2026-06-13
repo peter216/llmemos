@@ -5,7 +5,7 @@ applyTo: '**'
 
 # llmemos Bootstrapping Protocol — Claude Code Session Instructions
 
-**Protocol version:** 1.2.0
+**Protocol version:** 1.3.0
 **Implementation path:** Claude Code + local git/gh CLI (Path A)
 
 This instruction activates the llmemos Bootstrapping Protocol. The canonical protocol
@@ -68,131 +68,74 @@ On any other failure: emit `[MEMO PROTOCOL: ERROR | reason: <message>]` and cont
 
 ### Step 2 — Verify commit signatures
 
-**Bash tool call 2:**
+**Bash tool call 2** — run the signature-scoring script:
 ```bash
-git -C /tmp/llmemos-session log --show-signature -5 --format="%H %s"
+python3 <path-to-your-llmemos-checkout>/providers/anthropic.claude-code/llmemos_verify_signatures.py \
+  --repo-path /tmp/llmemos-session \
+  --personal-key AAAA0000111122223333444455556666BBBB7777 \
+  --personal-key BBBB1111222233334444555566667777CCCC8888 \
+  --agents-md /tmp/llmemos-session/AGENTS.md \
+  --commits 5 --max-walk 10
 ```
 
-All checked commits MUST be signed by one of these trusted key fingerprints:
-- `AAAA0000111122223333444455556666BBBB7777` — your-email@example.com, primary key
-- `BBBB1111222233334444555566667777CCCC8888` — your-email@example.com, secondary key
-
-# Replace with your own GPG fingerprints.
+# Replace --personal-key fingerprints with your own GPG fingerprints.
 # Run: gpg --list-secret-keys --keyid-format LONG
 
-Additionally, read `trusted-infrastructure-signing-keys` from AGENTS.md (if present).
-These are key IDs (short form, e.g. `B5690EEEBB952194`) for platform infrastructure signers
-such as GitHub's web-flow merge key.
+The script implements the commit signature scoring rules — see its module docstring for
+details (personal trusted key, valid → 0; infrastructure-signed commits are walked up to
+`--max-walk` first-parent hops looking for a personally-signed ancestor → 0, an unsigned
+ancestor → 3, an unknown-key ancestor → 2, or a bound-exhausted result → 2; unknown key →
+2; no signature → 3). `--agents-md` loads `trusted-infrastructure-signing-keys` from the
+corpus's AGENTS.md frontmatter automatically — no separate read is needed for this check.
 
-Apply these scoring rules to each commit:
-
-1. **Personal trusted key, valid** → historical coherence contribution: 0
-2. **Infrastructure key** (ID in `trusted-infrastructure-signing-keys`) AND parent commit
-   signed by a personal trusted key → historical coherence contribution: 0
-   - If `git log --show-signature` reports "Can't check signature: No public key", extract
-     the key ID via `git log --format="%GK" -1 <sha>` and compare to the infrastructure list.
-3. **Infrastructure key** but parent is NOT signed by a personal trusted key → score 2
-4. **Unknown key** (not in either list) → score 2
-5. **No signature** → score 3 (abort)
+Parse the JSON emitted on stdout:
+- `max_score` is this check's contribution to the Step 4 "historical coherence" score.
+- For any commit with `score >= 1`, retain its `sha`, `subject`, `classification`,
+  `resolution`, and (if present) `walk` — these supply the "name factors for any score ≥
+  1" required by Step 4.
+- If `max_score == 3`, treat as abort per the Step 4 scoring rules.
 
 ### Step 3 — Read index, parse taxonomy, select and load memos
 
-**Read tool call 3a** — read the memo index:
+**Read tool call 3a** — read the memo index (also needed for mid-session lookups):
 `/tmp/llmemos-session/AGENTS.md`
 
 From AGENTS.md confirm:
 - `canonical-repo: github.com/<your-username>/<your-corpus-repo>`
 - `canonical-branch: main`
 
-Parse the `## Memo Index` YAML block. Extract for each entry: `id`, `file`, `created`,
-`topics`, `sticky`, and `digest`. This index is authoritative — do not open individual
-memo files to check sticky status.
-
-**Read tool call 3b** — read the taxonomy:
+**Read tool call 3b** — read the taxonomy (also needed for mid-session alias/tag
+lookups):
 `/tmp/llmemos-session/taxonomy.yml`
 
-Load the tag definitions and alias expansions. Retain these for validation in Step 4.
+**Bash tool call 3c** — build the load plan:
+```bash
+python3 <path-to-your-llmemos-checkout>/providers/anthropic.claude-code/llmemos_select.py \
+  --repo-path /tmp/llmemos-session \
+  <directive-flags-from-the-Memo-Loading-Directive-below> \
+  --tag-search-default <value-from-Loading-Granularity-Default-below> \
+  [--tag-search <value>]   # only if a one-shot directive appears in the opening message
+```
 
-**Read tool call 3c (optional)** — if `section-index.json` exists at the corpus root,
-read it:
-`/tmp/llmemos-session/section-index.json`
+The script implements the "Select memos to load" directive table, the
+`--tag-search`/`tag-search-default` granularity rules, and the per-memo loading logic —
+see its module docstring for the full directive and granularity tables. It reads
+`AGENTS.md`, `taxonomy.yml`, and (if present) `section-index.json` directly from
+`--repo-path`; graceful degradation to whole-memo loading when `section-index.json` is
+absent is handled internally, as is the corpus-wide sticky-section sweep (sticky
+sections load regardless of memo-level `sticky`/`topics`/directive selection).
 
-Because the index ships inside the same signed commit as the rest of the corpus, no
-separate currency/staleness check is performed — it is trusted exactly as the rest of
-the corpus content is. If present, use it for section-level loading per "Loading
-granularity" below. If absent, fall back to whole-memo loading (today's behavior) —
-this is graceful degradation, not an error condition.
+Parse the JSON emitted on stdout: `granularity_used`, `total_memos`, `loaded_memo_count`,
+and `load_plan` — a list of `{memo_id, file, mode, ...}` entries.
 
-**Select memos to load** based on the Memo Loading Directive (if present at the end of
-this system prompt). Apply the first matching rule:
+**Read tool calls 3d+** — for each entry in `load_plan`, issue one Read tool call on
+`/tmp/llmemos-session/<file>`:
+- `mode: "whole"` → read the file in full.
+- `mode: "section"` → read with `offset=start_line`, `limit=end_line - start_line + 1`
+  (covers the section header through its last line).
 
-| Directive | Selection |
-|---|---|
-| *(none)* | Sticky memos only |
-| `--recent N` | Sticky + N most recent non-sticky memos by `created` date |
-| `--tags t1,t2` | Sticky + non-sticky memos matching any listed tag |
-| `--alias name` | Sticky + non-sticky memos matching the alias's tag expansion from taxonomy.yml |
-| `--all` | Sticky + all non-sticky memos |
-| `--memos ids` | Sticky + explicitly listed memo ids (comma-separated) |
-
-Load order: sticky memos first, then selected non-sticky memos, both groups ordered
-chronologically by `created` date.
-
-**Loading granularity** — if `section-index.json` was loaded in 3c, resolve the
-*initial bootstrap load's* granularity via `--tag-search <all | sections | memos>`
-(a one-shot directive, consumed here and discarded):
-
-| `--tag-search` value | Behavior |
-|---|---|
-| `all` (protocol default) | Union of memo-level and section-level matches, deduplicated — a memo already loaded in full is not redundantly re-loaded at section level. On a corpus with no section tagging adopted, this collapses to today's whole-memo behavior (graceful degradation) |
-| `sections` | Load matching content at section granularity wherever the index allows it |
-| `memos` | Load matching content at whole-memo granularity only (today's behavior, regardless of index presence) |
-
-**Distinguishing `--tag-search` from `tag-search-default`:** `--tag-search` is
-consumed once, here, to select the *initial* load's granularity, then discarded. A
-separate, persistent setting — `tag-search-default` — may also be present, supplied
-via the altpath mechanism (the same channel that carries trusted-key overrides and
-taxonomy extensions) and retained in ambient session context for the rest of the
-session. Look for a `tag-search-default: <all|sections|memos>` line under the
-"Loading Granularity Default" heading near the end of this file — read it during
-bootstrap alongside the static memo-loading directive footer, and retain its value
-for the rest of the session. Unlike `--tag-search`, it remains available to inform
-*any* loading decision the agent makes on its own initiative after bootstrap
-completes — see "Mid-Session Memo Loading" below for how it governs agent-initiated
-loads. The altpath mechanism is the right carrier for it precisely because it is
-read once at session start and folded into ambient context, rather than consumed
-and discarded like a CLI argument.
-
-For each memo in the selection set, apply this loading logic (uniform — every indexed
-memo has at least one section entry by construction, so there is no "memo has no
-sections" special case to handle):
-
-1. **Sticky memo** → load the whole memo in one Read call (a read-efficiency
-   optimization: a sticky memo's sections collectively span its entire body, so
-   reading them individually would cost more round-trips than reading the file once)
-2. **Non-sticky memo**, when operating at section granularity:
-   - Load sections where `sticky=true` unconditionally
-   - Load sections whose `tags` intersect the active loading directive — for an
-     untagged memo this naturally means loading its single synthetic section (whose
-     `tags` are the memo's `topics`), reproducing today's whole-memo behavior exactly
-   - Skip sections with no matching tags and `sticky=false`
-
-When loading a section rather than a whole memo, read the memo file and request only
-the lines spanning the index's `start_line`/`end_line` for that section — these align
-directly with a targeted Read call's `offset`/`limit` parameters, so no re-parsing of
-the memo file is needed. Include the section header in the read range.
-
-**Read tool calls 3d+** — read each selected memo or section:
-
-For each selected memo (whole-memo path) or section (section-granularity path), issue
-one Read tool call on:
-`/tmp/llmemos-session/<file-path-from-index>`
-— passing `offset`/`limit` derived from the index's `start_line`/`end_line` for
-section-level reads.
-
-Note the total count of loaded memos/sections, the total available memos from the
-index, and which granularity was actually used — all three are needed for the
-session-start log line in Step 5.
+Retain `total_memos`, `loaded_memo_count`, and `granularity_used` — all three are needed
+for the session-start log line in Step 5.
 
 ### Step 4 — Validate
 
@@ -231,11 +174,6 @@ or on retrieval error:
 | `whole-memo` | No `section-index.json` was present (graceful degradation), or every loaded memo was loaded in full (e.g. all selections were sticky, or `--tag-search memos` was in effect) |
 | `sections` | At least one memo was loaded at section granularity and none were loaded as a whole-memo *match* (sticky whole-memo loads don't count against this — they're the read-efficiency optimization, not a granularity choice) |
 | `mixed` | The selection set combined whole-memo loads (sticky memos, or non-sticky memos matched as a whole under `--tag-search all`'s union/dedup) with section-level loads of other memos |
-
-> **Sync note:** This field is new in protocol v1.2.0 and not yet reflected in the
-> canonical `llmemos-protocol.md` Step 5 template — that file's matching template
-> needs a corresponding update to satisfy the "Session log format — Must match"
-> sync-table requirement. Flagged here as a known follow-up, not yet applied.
 
 ---
 
