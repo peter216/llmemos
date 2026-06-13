@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-06-13
+
+### Changed
+
+- Note claude-launcher v1.8.0 dependency for /rename in auto-restart sessions
+- Merge pull request #4 from peter216:v1.8.0-dependency-note
+- Section-Level Tagging — bootstrap v1.2.0, llmemos-audit, sticky decay (#5)
+- Section-index-hook changelog entry + --tag-search docs (#6)
+- Fix corpus-wide sticky-section sweep and bound signature walk-back to 10 hops (#7)
+
+
 ## [Unreleased]
 
 ### Added
