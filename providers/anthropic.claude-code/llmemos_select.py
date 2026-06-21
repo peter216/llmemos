@@ -265,11 +265,29 @@ def build_load_plan(
         memo = memo_by_id[memo_id]
         sections = memo_section_entries(section_index, memo_id)
 
-        if memo.get("sticky") or not sections:
-            # Memo-level sticky memos always load whole (read-efficiency
-            # optimization — see protocol Step 3 rule 1). Memos with no
-            # section entries also load whole (nothing finer to load).
+        if not sections:
+            # No sections defined: graceful degradation to whole-memo
+            # (nothing finer to load regardless of granularity).
             add_whole(memo_id, "memo-sticky" if memo.get("sticky") else "no-sections")
+            continue
+
+        if granularity == "sections":
+            # sections mode: always use section-level loading, even for
+            # memo-level sticky memos — the sticky-→-whole shortcut is an
+            # "all" read-efficiency optimisation only. When no sections
+            # exist we already fell through to whole-memo above.
+            for section in sections:
+                if section.get("sticky"):
+                    add_section(memo_id, section, "sticky-section")
+                elif directive_tags and set(section.get("tags") or []) & directive_tags:
+                    add_section(memo_id, section, "tag-match-section")
+            continue
+
+        # granularity == "all" from here.
+        if memo.get("sticky"):
+            # Memo-level sticky: load whole (read-efficiency optimisation
+            # for "all" granularity — see protocol Step 3 rule 1).
+            add_whole(memo_id, "memo-sticky")
             continue
 
         if directive_tags is None:
@@ -279,19 +297,9 @@ def build_load_plan(
             add_whole(memo_id, "directive-selected-whole")
             continue
 
-        if granularity == "all":
-            # "all": memo-level matches load whole; corpus-wide
-            # tag-matching sections (below) extend recall to memos
-            # outside this selection set.
-            add_whole(memo_id, "directive-selected-whole")
-            continue
-
-        # granularity == "sections": load only matching/sticky sections.
-        for section in sections:
-            if section.get("sticky"):
-                add_section(memo_id, section, "sticky-section")
-            elif set(section.get("tags") or []) & directive_tags:
-                add_section(memo_id, section, "tag-match-section")
+        # granularity == "all" with tag-based directive: load whole; the
+        # corpus-wide section sweep below extends recall to non-selected memos.
+        add_whole(memo_id, "directive-selected-whole")
 
     # Corpus-wide expansion for "all": tag-matching sections in memos not
     # already covered by a whole-memo load.
