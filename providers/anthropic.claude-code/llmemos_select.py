@@ -5,9 +5,37 @@ Implements the "Select memos to load" / "Loading granularity" / per-memo
 loading logic from llmemos-protocol.md (Path A / Claude Code, Step 3).
 Given a cloned corpus repo (AGENTS.md, taxonomy.yml, and an optional
 section-index.json) and a loading directive, emits a JSON load plan: a
-list of {memo, mode, ...} entries the agent can turn directly into Read
-tool calls (whole-file reads, or offset/limit reads for section-level
-entries).
+list of {memo, mode, ...} entries.
+
+Content emission (--emit / --emit-file):
+    Without these flags the agent turns the load plan into N Read tool
+    calls — one per entry.  The emission flags collapse that to a single
+    read by assembling all selected content into one document.
+
+    --emit              Write assembled content to stdout; JSON metadata
+                        goes to stderr.  Intended for tool/pipeline consumers.
+    --emit-file PATH    Write assembled content to PATH (the string
+                        "{commit}" in PATH is substituted with the short
+                        corpus commit hash, e.g.
+                        "/tmp/llmemos-content-{commit}.md").
+                        JSON output (stdout) gains two extra fields:
+                          emit_sha256  SHA-256 hex digest of the file written
+                          emit_file    Resolved path actually written
+
+    The assembled document begins with a header comment and then one
+    provenance comment per entry followed immediately by its content:
+
+        <!-- llmemos-content | generated: … | memos: N | granularity: … | commit: … -->
+
+        <!-- llmemos-provenance | memo: … | mode: whole | reason: … | source: … | commit: … -->
+        <full file content>
+
+        <!-- llmemos-provenance | memo: … | section: … | lines: S-E | reason: … | source: … | commit: … -->
+        <section content>
+
+    Provenance comments let the agent (or a spot-check step) trace any
+    assembled block back to its source file and line range in the
+    verified repo clone.
 
 Directive (choose at most one; default is sticky-only):
     --recent N
@@ -48,9 +76,12 @@ For a "section" entry, the corresponding Read call is:
 from __future__ import annotations
 
 import argparse
+import datetime
+import hashlib
 import json
 import os
 import re
+import subprocess
 import sys
 
 import yaml
@@ -334,6 +365,119 @@ def build_load_plan(
     return load_plan, granularity_used
 
 
+# ---------------------------------------------------------------------------
+# Content emission helpers
+# ---------------------------------------------------------------------------
+
+
+def get_commit_short(repo_path: str, section_index: dict | None) -> str:
+    """Short commit hash for provenance: section-index first, then git, then 'unknown'.
+
+    Reading from section-index avoids a subprocess call in the common case
+    (the index is already loaded) while remaining correct for corpora that
+    lack an index.
+    """
+    if section_index and section_index.get("corpus_commit"):
+        return str(section_index["corpus_commit"])
+    try:
+        result = subprocess.run(
+            ["git", "-C", repo_path, "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return result.stdout.strip()
+    except Exception:
+        return "unknown"
+
+
+def read_entry_content(repo_path: str, entry: dict) -> str:
+    """Return the text for one load-plan entry: whole file or a line-range slice.
+
+    start_line / end_line in the load plan are 1-indexed (the same convention
+    as the Read tool's offset/limit parameters).  We convert to 0-indexed
+    slices here: start_line-1 (inclusive) → end_line (exclusive, because
+    end_line is the last line *included* in the section, so end_line as a
+    Python slice upper bound gives us exactly that line).
+    """
+    path = os.path.join(repo_path, entry["file"])
+    with open(path) as fh:
+        lines = fh.readlines()
+    if entry["mode"] == "whole":
+        return "".join(lines)
+    start = entry["start_line"] - 1
+    end = entry["end_line"]  # inclusive 1-indexed == exclusive 0-indexed
+    return "".join(lines[start:end])
+
+
+def assemble_content(
+    load_plan: list[dict],
+    repo_path: str,
+    commit: str,
+    granularity_used: str,
+    loaded_memo_count: int,
+) -> str:
+    """Assemble all load-plan entries into one Markdown document.
+
+    Each entry is preceded by an HTML comment carrying full provenance:
+    memo id, mode (whole/section), source file, line range (sections only),
+    selection reason, and the corpus commit hash.  These comments let the
+    agent (or a spot-check step) trace any block back to its origin in the
+    verified repo clone without re-reading the original files.
+
+    Read errors for individual entries are logged as warnings and replaced
+    by an inline error comment so a single bad file does not abort the
+    entire assembly.
+    """
+    now = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    parts = [
+        f"<!-- llmemos-content"
+        f" | generated: {now}"
+        f" | memos: {loaded_memo_count}"
+        f" | granularity: {granularity_used}"
+        f" | commit: {commit}"
+        f" -->\n"
+    ]
+
+    for entry in load_plan:
+        if entry["mode"] == "whole":
+            prov = (
+                f"<!-- llmemos-provenance"
+                f" | memo: {entry['memo_id']}"
+                f" | mode: whole"
+                f" | reason: {entry['reason']}"
+                f" | source: {entry['file']}"
+                f" | commit: {commit}"
+                f" -->"
+            )
+        else:
+            prov = (
+                f"<!-- llmemos-provenance"
+                f" | memo: {entry['memo_id']}"
+                f" | section: {entry['section_id']}"
+                f" | lines: {entry['start_line']}-{entry['end_line']}"
+                f" | reason: {entry['reason']}"
+                f" | source: {entry['file']}"
+                f" | commit: {commit}"
+                f" -->"
+            )
+
+        try:
+            body = read_entry_content(repo_path, entry)
+        except OSError as exc:
+            logger.warning("Could not read %s: %s", entry["file"], exc)
+            body = f"<!-- ERROR: could not read {entry['file']}: {exc} -->\n"
+
+        parts.append(f"\n{prov}\n{body}")
+
+    return "".join(parts)
+
+
+def sha256_hex(text: str) -> str:
+    """SHA-256 hex digest of UTF-8-encoded text."""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Build an llmemos memo/section load plan (Step 3)."
@@ -360,6 +504,21 @@ def main() -> None:
         "when --tag-search is not given.",
     )
 
+    emit_group = parser.add_mutually_exclusive_group()
+    emit_group.add_argument(
+        "--emit",
+        action="store_true",
+        help="Assemble and write memo content to stdout; JSON metadata goes to "
+        "stderr.  Intended for tool/pipeline consumers.",
+    )
+    emit_group.add_argument(
+        "--emit-file",
+        metavar="PATH",
+        help="Assemble and write memo content to PATH.  The substring {commit} "
+        "in PATH is replaced with the short corpus commit hash.  JSON output "
+        "(stdout) gains emit_sha256 and emit_file fields.",
+    )
+
     args = parser.parse_args()
 
     try:
@@ -381,17 +540,40 @@ def main() -> None:
 
     loaded_memo_count = len({entry["memo_id"] for entry in load_plan})
 
-    print(
-        json.dumps(
-            {
-                "granularity_used": granularity_used,
-                "total_memos": len(memos),
-                "loaded_memo_count": loaded_memo_count,
-                "load_plan": load_plan,
-            },
-            indent=2,
+    output: dict = {
+        "granularity_used": granularity_used,
+        "total_memos": len(memos),
+        "loaded_memo_count": loaded_memo_count,
+        "load_plan": load_plan,
+    }
+
+    if args.emit or args.emit_file:
+        commit = get_commit_short(args.repo_path, section_index)
+        content = assemble_content(
+            load_plan, args.repo_path, commit, granularity_used, loaded_memo_count
         )
-    )
+        digest = sha256_hex(content)
+
+        if args.emit:
+            # Content → stdout; metadata JSON → stderr so tool consumers can
+            # separate them (e.g. capture content with stdout, metadata with 2>).
+            sys.stdout.write(content)
+            sys.stderr.write(json.dumps(output, indent=2) + "\n")
+            return
+
+        # --emit-file: substitute {commit} in the path, write content, add
+        # hash + resolved path to the JSON output on stdout.
+        emit_path = args.emit_file.replace("{commit}", commit)
+        try:
+            with open(emit_path, "w") as fh:
+                fh.write(content)
+        except OSError as exc:
+            print(json.dumps({"error": f"Could not write emit file {emit_path!r}: {exc}"}))
+            sys.exit(1)
+        output["emit_sha256"] = digest
+        output["emit_file"] = emit_path
+
+    print(json.dumps(output, indent=2))
 
 
 if __name__ == "__main__":
