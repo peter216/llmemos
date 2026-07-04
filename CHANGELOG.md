@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-07-04
+
+### Added
+
+- **Content-emission integrity chain**, completing the `--emit`/`--emit-file` feature
+  from v1.4.0 ([#8](https://github.com/peter216/llmemos/issues/8), design deferred in
+  session-memo-041): the bootstrap protocol (Path A) now invokes `llmemos_select.py
+  --emit-file` to assemble every selected memo/section into one file, replacing N
+  per-entry Read tool calls with a single Read. Trust chain for the assembled file
+  (which sits outside the git signature boundary): script SHA-256 checksum verified
+  before invoking `llmemos_select.py`; `emit_sha256` from its JSON output verified
+  against the file actually written; commit-stamped output path; per-entry provenance
+  comments; mandatory random spot-check re-reading one entry directly from the verified
+  repo clone each session. Checksum or `emit_sha256` mismatch degrades gracefully to the
+  pre-1.5.0 per-entry Read behavior rather than aborting the session. Documented in
+  `llmemos-protocol.md` under a new "Content-Emission Integrity (Path A)" Security
+  subsection; `llmemos-bootstrap.instructions.md.altpath` Step 3 rewritten accordingly.
+
 ## [1.4.0] - 2026-06-21
 
 ### Changed

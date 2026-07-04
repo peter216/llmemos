@@ -1,6 +1,6 @@
 ---
 protocol: llmemos-bootstrapping
-version: "1.3.0"
+version: "1.5.0"
 canonical-repo: github.com/<your-username>/<your-corpus-repo>
 canonical-branch: main
 canonical-google-drive-folder: llmemos
@@ -21,7 +21,7 @@ trusted-infrastructure-signing-keys:
 
 # llmemos Bootstrapping Protocol
 
-Version: 1.3.0
+Version: 1.5.0
 
 This file documents the bootstrapping protocol for the llmemos project. It should be kept in sync with the implementation files listed in the sync table below.
 
@@ -211,8 +211,14 @@ The agent MUST use one of the approved retrieval paths as the first action of th
 
 1. Clone or update the repo locally (`git clone` / `git fetch` / `git reset`)
 2. Verify commit signatures via `git log --show-signature`
-3. Read `AGENTS.md`, `taxonomy.yml`, and selected memo files via the Read tool
-4. The Memo Loading Directive is provided at the end of the instructions file
+3. Read `AGENTS.md` and `taxonomy.yml` via the Read tool
+4. Verify the selection tool's own integrity (script checksum), then build the load plan
+   and assemble selected content into a single file via `--emit-file` — one Read tool call
+   loads everything, instead of one per memo/section. Verify the assembled file's
+   integrity (`emit_sha256`) before trusting it, and perform a random spot-check against
+   the source repo. Falls back to one Read call per selected entry if either integrity
+   check fails. See "Content-Emission Integrity" under Security for the full trust chain.
+5. The Memo Loading Directive is provided at the end of the instructions file
 
 ### Path B — Claude.ai (gh-mcp remote MCP server)
 
@@ -556,6 +562,45 @@ Chain of Provenance as a functional equivalent to the signed commit chain:
 This model is weaker than Paths A and B because trust is delegated to the CI/CD infrastructure
 rather than verified by the agent directly. Users adopting Path C should be aware of this
 trade-off.
+
+### Content-Emission Integrity (Path A)
+
+Introduced in v1.5.0. The memo-selection tool (`llmemos_select.py`) can assemble every
+selected memo/section into a single file (`--emit-file`) so the agent issues one Read
+tool call instead of one per entry — see [llmemos#8](https://github.com/peter216/llmemos/issues/8).
+This assembled file sits **outside** the git signature boundary verified in Step 2: it is
+generated locally, after clone/verify, by a script running on the agent's machine. Trusting
+it requires its own, narrower chain, distinct from both the signed-commit chain (Step 2)
+and the semantic content-validation scoring (Step 4):
+
+1. **Script checksum:** the agent verifies the selection script's own SHA-256 against a
+   known-good hash baked into the bootstrap instructions before invoking it — the same
+   pattern used to protect other locally-run automation scripts. A mismatch means the
+   assembly logic itself may have been altered, so its output cannot be trusted; the agent
+   falls back to reading each selected entry directly (which does not depend on the
+   script at all) rather than aborting the session.
+2. **`emit_sha256` verification:** the script reports the SHA-256 of the file it wrote in
+   its JSON output. The agent independently hashes the file on disk and compares — this
+   catches corruption or tampering of the assembled file between generation and read,
+   which the script's own self-report can't rule out on its own.
+3. **Commit-stamped path:** the assembled file's path includes the corpus commit hash
+   (`{commit}` substitution), preventing a stale assembly from a previous corpus state
+   being mistaken for current content.
+4. **Provenance headers:** each entry in the assembled file is preceded by an HTML comment
+   recording its source memo, section, line range, and commit — enabling the next control
+   to actually check something concrete.
+5. **Random spot-check:** the agent re-reads one entry — chosen at random, not a fixed
+   target — directly from the verified repo clone and confirms it matches the
+   corresponding block in the assembled file. A fixed spot-check target (e.g. "always the
+   first sticky section") would be a predictable, gameable vector in an open-source
+   protocol; randomization is load-bearing, not incidental.
+
+Failure at check 1 or 2 degrades gracefully to the pre-1.4.0 per-entry Read behavior
+(functionally correct, just more tool calls) rather than aborting the session outright —
+this assembly layer is a tool-call-cost optimization, not a substitute for Step 2's
+cryptographic verification, so its failure shouldn't be treated with the same severity as
+a signature-chain failure. Failure at check 5 (spot-check mismatch) is treated as a Step 4
+historical-coherence discrepancy and flagged to the user.
 
 ---
 
