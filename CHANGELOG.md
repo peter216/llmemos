@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+**This file tracks the whole repo** — tooling, docs, and optional companions,
+in addition to the protocol itself. Changes to the protocol *specification*
+(the contract in `llmemos-protocol.md`) are also cross-listed in
+[`PROTOCOL-CHANGES.md`](PROTOCOL-CHANGES.md), which has its own independent
+version number (`llmemos-protocol.md`'s frontmatter `version:` field) — the
+two numbers matched through v1.5.0 by coincidence, not by design, and are
+expected to diverge from here as repo-level changes land that don't touch
+the protocol itself.
+
+## [Unreleased]
+
+### Added
+
+- **LLM defense-in-depth** (`docs/llm-defense-in-depth/`) — a suggested, optional
+  companion architecture for Claude Code session safety (deterministic rule-engine
+  gate, an architecturally-diverse LLM semantic reviewer, content-based secret
+  scanning). **Not part of the llmemos protocol** — documented alongside it because
+  it shares the same defense-in-depth philosophy, not because any session requires
+  it. See `docs/llm-defense-in-depth/SECURITY.md` for the architecture, `phase-1/`
+  and `phase-2/` for design rationale and planned follow-on work. Protocol version
+  unaffected (see `PROTOCOL-CHANGES.md`).
+
 ## [1.5.0] - 2026-07-04
 
 ### Added

@@ -1,5 +1,9 @@
 ---
 protocol: llmemos-bootstrapping
+# This version tracks the protocol specification only — see PROTOCOL-CHANGES.md
+# for its history. It is independent of the repo-wide version in CHANGELOG.md;
+# the two matched through v1.5.0 by coincidence, not by design, and are expected
+# to diverge as repo changes land that don't touch this document's contract.
 version: "1.5.0"
 canonical-repo: github.com/<your-username>/<your-corpus-repo>
 canonical-branch: main

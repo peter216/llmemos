@@ -49,6 +49,8 @@ llmemos/
 │   ├── llmemos_logger.py        ← Directive usage logger (called by launcher)
 │   └── count-alias-usage.py    ← Utility: tally alias usage from git log
 ├── mcp-server/                  ← gh-mcp server for Path B (deploy from this directory)
+├── docs/
+│   └── llm-defense-in-depth/    ← Optional companion, not part of the protocol (see SECURITY.md)
 └── corpus-template/             ← Example corpus to fork as a starting point
 ```
 
@@ -81,6 +83,22 @@ ln -s /path/to/llmemos/bin/llmemos ~/bin/llmemos
 **3. Install Path B (Claude.ai)**
 
 Deploy the gh-mcp server (see `mcp-server/`), register it as an MCP integration in Claude.ai, and paste the contents of `providers/anthropic.claude-ai/llmemos-project-instructions.md` into your Claude.ai Project instructions. Edit to set your corpus repo, trusted fingerprints, and your gh-mcp server URL.
+
+---
+
+## Optional companion: LLM defense-in-depth (command & content safety)
+
+**Not part of the llmemos protocol** — skip this if you only want episodic
+memory. Documented here because it emerged from the same working practice
+and shares its defense-in-depth philosophy: a three-tiered Claude Code
+safety architecture combining a deterministic rule engine (e.g.
+ClaudeWatch), a local-LLM semantic reviewer for the gray zone that engine
+can't judge, and content-based secret scanning on tool output and prompts.
+See [`docs/llm-defense-in-depth/SECURITY.md`](docs/llm-defense-in-depth/SECURITY.md)
+for the generic architecture and rationale; `docs/llm-defense-in-depth/phase-1/`
+for a worked reference design and `phase-2/` for planned prompt-reduction
+work. These docs describe the pattern generically — adapt paths, models,
+and thresholds to your own environment.
 
 ---
 
@@ -122,6 +140,28 @@ gpg --list-secret-keys --keyid-format LONG
 The AI does not commit to your corpus directly. If you set `agent-write-access:
 pull-request` in your `AGENTS.md` frontmatter, the AI may push a branch and open a PR
 for your review — but you must GPG-sign the merge commit.
+
+---
+
+## Versioning
+
+This repo tracks **two independent version numbers**, on purpose:
+
+| | Repo version | Protocol version |
+|---|---|---|
+| **Tracks** | Everything in this repo — tooling, docs, provider implementations, optional companions | Only the bootstrapping protocol's own contract (`llmemos-protocol.md`) |
+| **Recorded in** | [`CHANGELOG.md`](CHANGELOG.md) | [`PROTOCOL-CHANGES.md`](PROTOCOL-CHANGES.md) + `llmemos-protocol.md`'s frontmatter `version:` field |
+| **Git tags** | `vX.Y.Z`, one series | None — it's a versioned document, not a versioned release artifact |
+
+They matched through `v1.5.0` because every past change happened to touch the
+protocol itself. That's a coincidence of history, not a rule — a repo change
+that doesn't touch the protocol's contract (e.g. a new optional companion
+feature, a tooling fix, a doc improvement) bumps the repo version without
+bumping the protocol version, and the two are expected to diverge from here.
+
+If llmemos ever gets external consumers who need to pin against a protocol
+version independently of this repo's own release cadence, a second tag series
+would be the next step — not needed at the current scale.
 
 ---
 
