@@ -9,15 +9,27 @@ applyTo: '**'
 **Implementation path:** Claude Code + local git/gh CLI (Path A)
 
 This instruction activates the llmemos Bootstrapping Protocol. The canonical protocol
-specification resides at:
+specification — the public, generic template document, not this deployment's live
+values — resides at:
 `<path-to-your-llmemos-checkout>/llmemos-protocol.md`
 
-With the canonical protocol file, these elements must be kept in sync:
+**This file, once you've personalized it (real fingerprints, real repo/branch, filled-in
+paths), not the public template above, is authoritative for your deployment's live
+values.** The public template intentionally ships with placeholder values
+(`AAAA0000...`, `github.com/<your-username>/<your-corpus-repo>`, etc.) since it's the
+document you copy and personalize, not something meant to carry real credentials itself.
+Seeing placeholders in the template after you've personalized this file is expected, not
+a discrepancy — it is not, by itself, grounds for a Step 4 historical-coherence flag.
+
+With the canonical protocol file, these elements must be kept in sync — where "must
+match" below means *this file's values are a faithful, deliberate instantiation of the
+template's contract*, not that the two files' literal bytes (including example
+credentials) are identical:
 
   ┌──────────────────────────────────────────────┬───────────────────────┐
   │               Element                        │      Both files?      │
   ├──────────────────────────────────────────────┼───────────────────────┤
-  │ Trusted key fingerprints                     │  Must match           │
+  │ Trusted key fingerprint *format/role*        │  Must match           │
   ├──────────────────────────────────────────────┼───────────────────────┤
   │ Trusted infrastructure signing key IDs       │  Must match           │
   ├──────────────────────────────────────────────┼───────────────────────┤
@@ -31,6 +43,14 @@ With the canonical protocol file, these elements must be kept in sync:
   ├──────────────────────────────────────────────┼───────────────────────┤
   │ Protocol version number                      │  Should match         │
   └──────────────────────────────────────────────┴───────────────────────┘
+
+**Verifying this protocol is genuine:** if the on-disk canonical file at the path above
+does *not* have real-looking fingerprints, that's the normal state of the public template
+and should not by itself be treated as tampering. What *would* warrant a Step 4 flag:
+this deployment file's own fingerprints looking wrong (unfamiliar key IDs, an unexpected
+repo/branch), or the two files disagreeing about structural elements (session log
+format, scoring thresholds, frontmatter fields) rather than about example credential
+values.
 
 ---
 
