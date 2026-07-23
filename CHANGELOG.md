@@ -27,6 +27,25 @@ the protocol itself.
   and `phase-2/` for design rationale and planned follow-on work. Protocol version
   unaffected (see `PROTOCOL-CHANGES.md`).
 
+### Fixed
+
+- **`bin/llmemos-publish`** — `{{ CONVERSATION_TITLE }}` substitution now replaces
+  all occurrences in a memo template, not just the first. Some templates carry the
+  placeholder twice (the frontmatter `conversation:` field and a body heading);
+  the previous `count=1` left the second occurrence as literal text after publish.
+- **Path A clone/recovery step** — added a remote-reachability check before removing
+  a stale session mirror, and reworded the step's rationale away from framing it as
+  designed to avoid confirmation prompts. Protocol contract change — bumps the
+  protocol spec to v1.6.0; see `PROTOCOL-CHANGES.md` for detail. Applied to both the
+  spec (`llmemos-protocol.md`) and the Claude Code provider template
+  (`providers/anthropic.claude-code/llmemos-bootstrap.instructions.md`).
+- **Public-template vs. deployment trust boundary, clarified** — `llmemos-protocol.md`
+  and its provider template counterpart previously read as if a personalized
+  deployment's real credentials needed to byte-match this repo's placeholder
+  fingerprints/repo names to stay "in sync." Reworded so placeholder values here are
+  legible as the expected state of an unpersonalized template, not a
+  historical-coherence discrepancy. See `PROTOCOL-CHANGES.md` for detail.
+
 ## [1.5.0] - 2026-07-04
 
 ### Added

@@ -4,7 +4,7 @@ protocol: llmemos-bootstrapping
 # for its history. It is independent of the repo-wide version in CHANGELOG.md;
 # the two matched through v1.5.0 by coincidence, not by design, and are expected
 # to diverge as repo changes land that don't touch this document's contract.
-version: "1.5.0"
+version: "1.6.0"
 canonical-repo: github.com/<your-username>/<your-corpus-repo>
 canonical-branch: main
 canonical-google-drive-folder: llmemos
@@ -35,7 +35,7 @@ trusted-infrastructure-signing-keys:
 
 # llmemos Bootstrapping Protocol
 
-Version: 1.5.0
+Version: 1.6.0
 
 This file documents the bootstrapping protocol for the llmemos project. It should be kept in sync with the implementation files listed in the sync table below — for the credential-shaped rows (fingerprints, key IDs, repo/branch), "in sync" means each implementation file carries a deliberate, deployment-specific instantiation of this template's contract, not that its literal values match the placeholders shown here.
 
@@ -224,10 +224,16 @@ The agent MUST use one of the approved retrieval paths as the first action of th
 ### Path A — Claude Code (git CLI via Bash tool)
 
 1. Clone or update the repo locally (`git clone`; if a stale mirror already exists,
-   `rm -rf` and re-clone rather than `git fetch` / `git reset --hard` — the mirror is
-   disposable and session-scoped, and this composition avoids commonly-flagged
-   destructive-git-command confirmation prompts on a directory that never holds
-   uncommitted work)
+   verify the remote is reachable — e.g. `git ls-remote --exit-code <repo-url> HEAD`
+   — before removing anything, then `rm -rf` and re-clone rather than `git fetch` /
+   `git reset --hard`. The mirror is disposable and session-scoped and never holds
+   uncommitted work, so a full remove-and-reclone gives a simpler, unambiguous result
+   than fetch+reset for this case. The reachability check exists because `rm -rf` has
+   no partial-failure state: run it before confirming the remote responds, and a
+   network failure leaves no session directory at all instead of the stale-but-intact
+   one a failed `fetch` would have preserved. If the reachability check fails, skip
+   the removal and continue per the general retrieval-error handling below, leaving
+   any existing stale mirror untouched.)
 2. Verify commit signatures via `git log --show-signature`
 3. Read `AGENTS.md` and `taxonomy.yml` via the Read tool
 4. Verify the selection tool's own integrity (script checksum), then build the load plan
