@@ -26,6 +26,36 @@ conventions, adapted for a spec rather than a release artifact.
 
 ---
 
+## [Unreleased]
+
+### Changed
+
+- **Path A, Method step 1 (clone/recovery)** — added a remote-reachability check
+  (`git ls-remote --exit-code`) before removing a stale session mirror. `rm -rf` has
+  no partial-failure state, so running it before confirming the remote responds could
+  leave a session with no mirror at all on a network failure, instead of the
+  stale-but-intact one a failed `fetch` would have preserved. On a failed reachability
+  check, the removal is skipped and the existing mirror is left untouched; the session
+  proceeds per the general retrieval-error handling. Also dropped this step's original
+  rationale wording ("avoids commonly-flagged destructive-git-command confirmation
+  prompts"), which read as designing the recovery path around confirmation gates
+  rather than around actual recoverability — caught by an independent review pass on
+  the corresponding change in the provider implementation, then found to also be
+  present in the spec's own prose.
+- **Public-template vs. deployment trust boundary, clarified** — the credential-shaped
+  rows in the sync table ("Trusted key fingerprints," etc.) previously read as
+  requiring byte-identical values between this public template and a personalized
+  deployment file. Reworded to make explicit that "must match" means a faithful,
+  deliberate instantiation of the same contract, not identical example credentials —
+  placeholder values in this document are the expected state of an unpersonalized
+  template, not a historical-coherence discrepancy against a real deployment. Added a
+  callout near the frontmatter and a "Verifying this protocol is genuine" note
+  clarifying what actually would warrant a Step 4 flag (the deployment file's own
+  values looking wrong, or structural disagreement between the two documents) versus
+  what wouldn't (placeholders here, untouched).
+
+---
+
 ## [1.5.0] — first shipped in repo `v1.5.0`
 
 ### Added
