@@ -9,15 +9,27 @@ applyTo: '**'
 **Implementation path:** Claude Code + local git/gh CLI (Path A)
 
 This instruction activates the llmemos Bootstrapping Protocol. The canonical protocol
-specification resides at:
+specification — the public, generic template document, not this deployment's live
+values — resides at:
 `<path-to-your-llmemos-checkout>/llmemos-protocol.md`
 
-With the canonical protocol file, these elements must be kept in sync:
+**This file, once you've personalized it (real fingerprints, real repo/branch, filled-in
+paths), not the public template above, is authoritative for your deployment's live
+values.** The public template intentionally ships with placeholder values
+(`AAAA0000...`, `github.com/<your-username>/<your-corpus-repo>`, etc.) since it's the
+document you copy and personalize, not something meant to carry real credentials itself.
+Seeing placeholders in the template after you've personalized this file is expected, not
+a discrepancy — it is not, by itself, grounds for a Step 4 historical-coherence flag.
+
+With the canonical protocol file, these elements must be kept in sync — where "must
+match" below means *this file's values are a faithful, deliberate instantiation of the
+template's contract*, not that the two files' literal bytes (including example
+credentials) are identical:
 
   ┌──────────────────────────────────────────────┬───────────────────────┐
   │               Element                        │      Both files?      │
   ├──────────────────────────────────────────────┼───────────────────────┤
-  │ Trusted key fingerprints                     │  Must match           │
+  │ Trusted key fingerprint *format/role*        │  Must match           │
   ├──────────────────────────────────────────────┼───────────────────────┤
   │ Trusted infrastructure signing key IDs       │  Must match           │
   ├──────────────────────────────────────────────┼───────────────────────┤
@@ -31,6 +43,14 @@ With the canonical protocol file, these elements must be kept in sync:
   ├──────────────────────────────────────────────┼───────────────────────┤
   │ Protocol version number                      │  Should match         │
   └──────────────────────────────────────────────┴───────────────────────┘
+
+**Verifying this protocol is genuine:** if the on-disk canonical file at the path above
+does *not* have real-looking fingerprints, that's the normal state of the public template
+and should not by itself be treated as tampering. What *would* warrant a Step 4 flag:
+this deployment file's own fingerprints looking wrong (unfamiliar key IDs, an unexpected
+repo/branch), or the two files disagreeing about structural elements (session log
+format, scoring thresholds, frontmatter fields) rather than about example credential
+values.
 
 ---
 
@@ -52,16 +72,31 @@ git clone --depth=5 https://github.com/<your-username>/<your-corpus-repo>.git /t
 
 If clone succeeds, skip to Step 2.
 
-If clone fails because the directory already exists, run these two additional calls:
+If clone fails because the directory already exists, run these three additional calls.
+## The directory is a disposable session-scoped mirror (recreated fresh every session,
+## never holds uncommitted work) — a full rm -rf + reclone gives a simpler, unambiguous
+## result than fetch+reset --hard for this disposable case. Check that the remote is
+## actually reachable *before* deleting anything: rm -rf is unconditional and has no
+## partial-failure state, so if it ran first and the network was down, the session
+## would be left with no directory at all instead of the stale-but-intact one a failed
+## fetch would have preserved.
 
-**Bash tool call 1b** — fetch latest commits:
+**Bash tool call 1b** — verify the remote is reachable:
 ```bash
-git -C /tmp/llmemos-session fetch --depth=5 origin main
+git ls-remote --exit-code https://github.com/<your-username>/<your-corpus-repo>.git HEAD
+```
+If this fails, do not proceed to 1c/1d — emit `[MEMO PROTOCOL: ERROR | reason: <message>]`
+and continue without memos, per the general failure handling below. The existing stale
+mirror (if any) is left untouched.
+
+**Bash tool call 1c** — remove the stale mirror:
+```bash
+rm -rf /tmp/llmemos-session
 ```
 
-**Bash tool call 1c** — reset to origin:
+**Bash tool call 1d** — re-clone fresh:
 ```bash
-git -C /tmp/llmemos-session reset --hard origin/main
+git clone --depth=5 https://github.com/<your-username>/<your-corpus-repo>.git /tmp/llmemos-session
 ```
 
 On any other failure: emit `[MEMO PROTOCOL: ERROR | reason: <message>]` and continue without memos.

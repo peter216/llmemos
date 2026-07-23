@@ -23,17 +23,27 @@ trusted-infrastructure-signing-keys:
   # - "KEY_ID_HERE"  # GitHub web-flow merge signing key
 ---
 
+> **This is the generic, public specification.** The fingerprints, repo names, and other
+> credential-shaped values above are illustrative placeholders, not live secrets — this
+> document is the open-source template that a user's own deployment (e.g. a
+> provider-specific bootstrap/instructions file) is written against. A deployed instance's
+> actual authoritative values live in *that* instance's local implementation file, not
+> here. An agent bootstrapping a real session should treat this file as the contract's
+> shape and its own deployment's implementation file as the source of truth for real
+> fingerprints — seeing placeholders here instead of real keys is expected, not a
+> historical-coherence discrepancy.
+
 # llmemos Bootstrapping Protocol
 
 Version: 1.5.0
 
-This file documents the bootstrapping protocol for the llmemos project. It should be kept in sync with the implementation files listed in the sync table below.
+This file documents the bootstrapping protocol for the llmemos project. It should be kept in sync with the implementation files listed in the sync table below — for the credential-shaped rows (fingerprints, key IDs, repo/branch), "in sync" means each implementation file carries a deliberate, deployment-specific instantiation of this template's contract, not that its literal values match the placeholders shown here.
 
   ┌─────────────────────────────────────────────┬───────────────────────────────────────────────────────────┐
   │               Element                       │                    All implementation files                │
   ├─────────────────────────────────────────────┼───────────────────────────────────────────────────────────┤
   │ Protocol Version                            │ llmemos-bootstrap.instructions.md, AGENTS.md, taxonomy.yml │
-  │ Trusted Signing Key Fingerprints            │ llmemos-bootstrap.instructions.md, sync_gdrive.py          │
+  │ Trusted Signing Key Fingerprints (format/role) │ llmemos-bootstrap.instructions.md, sync_gdrive.py       │
   │ Trusted Infrastructure Signing Key IDs      │ llmemos-bootstrap.instructions.md                          │
   │ Canonical Repo / Branch / Folder           │ llmemos-bootstrap.instructions.md, sync_gdrive.py          │
   └─────────────────────────────────────────────┴───────────────────────────────────────────────────────────┘
@@ -213,7 +223,11 @@ The agent MUST use one of the approved retrieval paths as the first action of th
 
 ### Path A — Claude Code (git CLI via Bash tool)
 
-1. Clone or update the repo locally (`git clone` / `git fetch` / `git reset`)
+1. Clone or update the repo locally (`git clone`; if a stale mirror already exists,
+   `rm -rf` and re-clone rather than `git fetch` / `git reset --hard` — the mirror is
+   disposable and session-scoped, and this composition avoids commonly-flagged
+   destructive-git-command confirmation prompts on a directory that never holds
+   uncommitted work)
 2. Verify commit signatures via `git log --show-signature`
 3. Read `AGENTS.md` and `taxonomy.yml` via the Read tool
 4. Verify the selection tool's own integrity (script checksum), then build the load plan
